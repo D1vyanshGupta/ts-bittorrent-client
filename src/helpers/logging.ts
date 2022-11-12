@@ -3,21 +3,28 @@ import pretty from 'pino-pretty'
 
 const logger = pino(pretty())
 
-function isObject(value: unknown): boolean {
-  return typeof value === 'object' && !Array.isArray(value) && value !== null
+import { isObject, parseSHA1HashList } from './misc'
+
+function logPieceHashList(hashList: string[], indent: string): void {
+  hashList.forEach((pieceHash: string): void => {
+    logger.info(`${indent}${pieceHash}`)
+  })
 }
 
-export function logTorrent(object: object, parentKey = ''): void {
+export function logMetaInfo(object: object, indent = ''): void {
   //eslint-disable-next-line no-loops/no-loops
   for (const [key, value] of Object.entries(object)) {
-    const printKey = parentKey + key
+    const printKey = indent + key
 
     if (Buffer.isBuffer(value)) {
-      const encoding = key === 'pieces' ? 'hex' : 'utf8'
-      logger.info(`${printKey} => ${value.toString(encoding)}`)
+      if (key === 'pieces') {
+        logger.info(`${printKey} => `)
+        const hashList = parseSHA1HashList(value)
+        logPieceHashList(hashList, indent + '\t')
+      } else logger.info(`${printKey} => ${value.toString('utf8')}`)
     } else if (isObject(value)) {
-      logger.info(`${printKey}`)
-      logTorrent(value, parentKey + '\t')
+      logger.info(`${printKey} =>`)
+      logMetaInfo(value, indent + '\t')
     } else logger.info(`${printKey} => ${value}`)
   }
 }

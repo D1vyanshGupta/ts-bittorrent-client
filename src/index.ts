@@ -2,15 +2,17 @@ import { join } from 'path'
 import { decode } from 'bencode'
 import { readFileSync } from 'fs'
 
-import { logTorrent } from './helpers/logging'
+import { MetaInfo } from './types'
+import { logMetaInfo } from './helpers/logging'
 
 const FILE_NAME = 'puppy.torrent'
 
-function parseTorrent(): void {
+function parseMetaInfoFile(): MetaInfo {
   const filePath = join(process.cwd(), FILE_NAME)
-  const torrent = decode(readFileSync(filePath))
+  const metaInfo = decode(readFileSync(filePath)) as MetaInfo
+  logMetaInfo(metaInfo)
 
-  logTorrent(torrent)
+  return metaInfo
 }
 
-parseTorrent()
+const metaInfo = parseMetaInfoFile()
