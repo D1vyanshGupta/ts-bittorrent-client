@@ -4,15 +4,17 @@ import { readFileSync } from 'fs'
 
 import { MetaInfo } from './types'
 import { logMetaInfo } from './helpers/logging'
+import { parseMetaInfo } from './helpers/parse'
 
 const FILE_NAME = 'puppy.torrent'
 
-function parseMetaInfoFile(): MetaInfo {
+function parseMetaInfoFromFile(): MetaInfo {
   const filePath = join(process.cwd(), FILE_NAME)
-  const metaInfo = decode(readFileSync(filePath)) as MetaInfo
+  const rawMetaInfo = decode(readFileSync(filePath))
+  const metaInfo = parseMetaInfo(rawMetaInfo)
   logMetaInfo(metaInfo)
 
   return metaInfo
 }
 
-const metaInfo = parseMetaInfoFile()
+const metaInfo = parseMetaInfoFromFile()

@@ -1,30 +1,34 @@
 import pino from 'pino'
 import pretty from 'pino-pretty'
 
-const logger = pino(pretty())
+import { isObject } from './misc'
+import { MetaInfo } from '../types'
 
-import { isObject, parseSHA1HashList } from './misc'
+export const logger = pino(pretty())
 
-function logPieceHashList(hashList: string[], indent: string): void {
-  hashList.forEach((pieceHash: string): void => {
-    logger.info(`${indent}${pieceHash}`)
+function logArrayItems(array: string[], indent: string): void {
+  array.forEach((item: string): void => {
+    logger.info(`${indent}${item}`)
   })
 }
 
-export function logMetaInfo(object: object, indent = ''): void {
+export function logMetaInfo(metaInfo: MetaInfo | object, indent = ''): void {
   //eslint-disable-next-line no-loops/no-loops
-  for (const [key, value] of Object.entries(object)) {
-    const printKey = indent + key
+  for (const [key, value] of Object.entries(metaInfo)) {
+    const indentedKey = indent + key
 
-    if (Buffer.isBuffer(value)) {
-      if (key === 'pieces') {
-        logger.info(`${printKey} => `)
-        const hashList = parseSHA1HashList(value)
-        logPieceHashList(hashList, indent + '\t')
-      } else logger.info(`${printKey} => ${value.toString('utf8')}`)
-    } else if (isObject(value)) {
-      logger.info(`${printKey} =>`)
+    if (isObject(value)) {
+      logger.info(`${indentedKey} =>`)
       logMetaInfo(value, indent + '\t')
-    } else logger.info(`${printKey} => ${value}`)
+      continue
+    }
+
+    if (Array.isArray(value)) {
+      logger.info(`${indentedKey} =>`)
+      logArrayItems(value, indent + '\t')
+      continue
+    }
+
+    logger.info(`${indentedKey} => ${value}`)
   }
 }
