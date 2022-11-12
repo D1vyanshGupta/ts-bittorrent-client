@@ -37,7 +37,8 @@ export function parseMetaInfo(input: object): MetaInfo {
       continue
     }
 
-    metaInfo[key] = value
+    if (key === 'creation date') metaInfo[key] = new Date(value).toISOString()
+    else metaInfo[key] = value
   }
 
   return metaInfo as MetaInfo
