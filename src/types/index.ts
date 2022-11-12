@@ -18,3 +18,9 @@ export type MetaInfo = {
     pieces: string
   }
 }
+
+export type BEPResponse = {
+  action: number
+  transactionId: number
+  connectionId: number
+}
