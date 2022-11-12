@@ -3,7 +3,7 @@ import { decode } from 'bencode'
 import { readFileSync } from 'fs'
 
 import { MetaInfo } from './types'
-import { parseMetaInfo } from './helpers/parse'
+import { parseMetaInfo } from './helpers/metaInfo'
 import { logMetaInfo } from './helpers/logging'
 
 const FILE_NAME = 'puppy.torrent'
