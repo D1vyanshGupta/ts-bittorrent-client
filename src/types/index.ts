@@ -3,7 +3,7 @@ type FileInfo = {
   path: string[]
 }
 
-export type MetaInfo = {
+export type ReadableMetaInfo = {
   announce: string
   'announce-list'?: string[]
   'created by'?: string

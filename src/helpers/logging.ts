@@ -2,7 +2,7 @@ import pino from 'pino'
 import pretty from 'pino-pretty'
 
 import { isObject } from './misc'
-import { MetaInfo } from '../types'
+import { ReadableMetaInfo } from '../types'
 
 export const logger = pino(pretty())
 
@@ -12,7 +12,10 @@ function logArrayItems(array: string[], indent: string): void {
   })
 }
 
-export function logMetaInfo(metaInfo: MetaInfo | object, indent = ''): void {
+export function logMetaInfo(
+  metaInfo: ReadableMetaInfo | object,
+  indent = ''
+): void {
   //eslint-disable-next-line no-loops/no-loops
   for (const [key, value] of Object.entries(metaInfo)) {
     const indentedKey = indent + key

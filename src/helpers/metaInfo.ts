@@ -1,5 +1,5 @@
 import { isObject } from './misc'
-import { MetaInfo } from '../types'
+import { ReadableMetaInfo } from '../types'
 
 function getHashListFromBuffer(buffer: Buffer): string[] {
   const hashString = buffer.toString('hex')
@@ -21,7 +21,7 @@ function getHashListFromBuffer(buffer: Buffer): string[] {
   return hashList
 }
 
-export function parseMetaInfo(input: object): MetaInfo {
+export function parseMetaInfoToReadable(input: object): ReadableMetaInfo {
   const metaInfo = {}
 
   //eslint-disable-next-line no-loops/no-loops
@@ -33,7 +33,7 @@ export function parseMetaInfo(input: object): MetaInfo {
     }
 
     if (isObject(value)) {
-      metaInfo[key] = parseMetaInfo(value)
+      metaInfo[key] = parseMetaInfoToReadable(value)
       continue
     }
 
@@ -41,5 +41,5 @@ export function parseMetaInfo(input: object): MetaInfo {
     else metaInfo[key] = value
   }
 
-  return metaInfo as MetaInfo
+  return metaInfo as ReadableMetaInfo
 }
