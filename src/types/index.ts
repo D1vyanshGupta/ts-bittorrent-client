@@ -38,8 +38,21 @@ export type ReadableMetaInfo = {
   }
 }
 
-export type BEPResponse = {
+export type ConnectionResponse = {
   action: number
   transactionId: number
-  connectionId: number
+  connectionId: bigint
+}
+
+export type Peer = {
+  ip: Buffer
+  port: number
+}
+
+export type AnnounceResponse = {
+  action: number
+  transactionId: number
+  leechers: number
+  seeders: number
+  peers: Peer[]
 }

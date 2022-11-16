@@ -4,7 +4,7 @@ import { readFileSync } from 'fs'
 
 import { DecodedMetaInfo } from './types'
 import { logMetaInfo } from './helpers/logging'
-import { parseMetaInfoToReadable } from './helpers/metaInfo'
+import { parseMetaInfoToReadable } from './helpers/meta-info'
 
 const FILE_NAME = 'puppy.torrent'
 
