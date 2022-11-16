@@ -2,9 +2,15 @@ import { randomBytes } from 'crypto'
 import { Socket, createSocket } from 'dgram'
 
 import getPeerId from './peer-id'
+import { logger } from './logging'
 import { splitBufferToChunks } from './misc'
-import { BUILD_CONN_REQ_CONN_ID } from '../constants'
 import { getInfoHash, getTorrentSize } from './meta-info'
+import {
+  CONNECT_EVENT,
+  ANNOUNCE_EVENT,
+  BUILD_CONN_REQ_CONN_ID
+} from '../constants'
+
 import {
   Peer,
   DecodedMetaInfo,
@@ -42,7 +48,7 @@ function parseConnRespBuffer(respBuffer: Buffer): ConnectionResponse {
   return {
     action: respBuffer.readUInt32BE(0),
     transactionId: respBuffer.readUInt32BE(4),
-    connectionId: respBuffer.readBigInt64BE(8)
+    connectionId: respBuffer.subarray(8)
   }
 }
 
@@ -142,12 +148,67 @@ function parseAnnounceRespBuffer(respBuffer: Buffer): AnnounceResponse {
   }
 }
 
+function getResponseType(respBuffer: Buffer): string {
+  const action = respBuffer.readUInt32BE(0)
+  if (action === 0) return CONNECT_EVENT
+  return ANNOUNCE_EVENT
+}
+
 function udpSend(
   socket: Socket,
   msgBuffer: Buffer,
   urlString: string,
-  callBack: (any) => Record<string, unknown> | null
+  callBack: (any) => void
 ): void {
   const url = new URL(urlString)
   socket.send(msgBuffer, 0, msgBuffer.length, +url.port, url.hostname, callBack)
+}
+
+export function getPeers(
+  metaInfo: DecodedMetaInfo,
+  timeoutMs = 5000
+): Promise<Peer[]> {
+  const socket = createSocket('udp4')
+  const annnounceUrl = metaInfo.announce.toString('utf-8')
+
+  udpSend(socket, buildConnReqBuffer(), annnounceUrl, () => {
+    logger.info(`sent connection request to ${annnounceUrl}`)
+  })
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `unable to fetch peers from ${annnounceUrl} within ${
+            timeoutMs / 1000
+          } sec`
+        )
+      )
+    }, timeoutMs)
+
+    socket.on('message', (respBuffer) => {
+      const responseType = getResponseType(respBuffer)
+
+      if (responseType === CONNECT_EVENT) {
+        logger.info(`received connection response from ${annnounceUrl}`)
+
+        const connRespBuffer = parseConnRespBuffer(respBuffer)
+        const announceReqBuffer = buildAnnounceReqBuffer(
+          connRespBuffer.connectionId,
+          metaInfo
+        )
+
+        udpSend(socket, announceReqBuffer, annnounceUrl, () => {
+          logger.info(`sent announce request to ${annnounceUrl}`)
+        })
+      } else if (responseType === ANNOUNCE_EVENT) {
+        logger.info(`received announce response from ${annnounceUrl}`)
+
+        const announceRespBuffer = parseAnnounceRespBuffer(respBuffer)
+
+        clearTimeout(timer)
+        resolve(announceRespBuffer.peers)
+      }
+    })
+  })
 }

@@ -41,7 +41,7 @@ export type ReadableMetaInfo = {
 export type ConnectionResponse = {
   action: number
   transactionId: number
-  connectionId: bigint
+  connectionId: Buffer
 }
 
 export type Peer = {

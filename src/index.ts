@@ -3,19 +3,27 @@ import { decode } from 'bencode'
 import { readFileSync } from 'fs'
 
 import { DecodedMetaInfo } from './types'
-import { logMetaInfo } from './helpers/logging'
+import { getPeers } from './helpers/tracker'
+import { logger, logMetaInfo } from './helpers/logging'
 import { parseMetaInfoToReadable } from './helpers/meta-info'
 
 const FILE_NAME = 'puppy.torrent'
 
 function parseMetaInfoFromFile(): DecodedMetaInfo {
   const filePath = join(process.cwd(), FILE_NAME)
-  const rawMetaInfo = decode(readFileSync(filePath))
+  const decodedMetaInfo = decode(readFileSync(filePath))
 
-  const readableMetaInfo = parseMetaInfoToReadable(rawMetaInfo)
+  const readableMetaInfo = parseMetaInfoToReadable(decodedMetaInfo)
   logMetaInfo(readableMetaInfo)
 
-  return rawMetaInfo
+  return decodedMetaInfo
 }
 
 const metaInfo = parseMetaInfoFromFile()
+getPeers(metaInfo, 20000)
+  .then((peers) => {
+    logger.info(peers)
+  })
+  .catch((error) => {
+    logger.error(error?.message)
+  })
