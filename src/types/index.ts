@@ -15,7 +15,7 @@ export type MetaInfo = {
     path?: string[]
     name: string
     'piece length': number
-    pieces: string
+    pieces: string[]
   }
 }
 

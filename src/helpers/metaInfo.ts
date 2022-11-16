@@ -1,7 +1,7 @@
 import { isObject } from './misc'
 import { MetaInfo } from '../types'
 
-function parsePiecesHash(buffer: Buffer): string[] {
+function getHashListFromBuffer(buffer: Buffer): string[] {
   const hashString = buffer.toString('hex')
 
   // SHA1 hash is 160 bits long == 40 hex chars
@@ -28,7 +28,7 @@ export function parseMetaInfo(input: object): MetaInfo {
   for (const [key, value] of Object.entries(input)) {
     if (Buffer.isBuffer(value)) {
       if (key !== 'pieces') metaInfo[key] = value.toString('utf8')
-      else metaInfo[key] = parsePiecesHash(value)
+      else metaInfo[key] = getHashListFromBuffer(value)
       continue
     }
 
