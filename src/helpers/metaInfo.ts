@@ -1,5 +1,9 @@
+import { encode } from 'bencode'
+import { createHash } from 'crypto'
+import { toBufferBE } from 'bigint-buffer'
+
 import { isObject } from './misc'
-import { ReadableMetaInfo } from '../types'
+import { DecodedMetaInfo, ReadableMetaInfo } from '../types'
 
 function getHashListFromBuffer(buffer: Buffer): string[] {
   const hashString = buffer.toString('hex')
@@ -42,4 +46,24 @@ export function parseMetaInfoToReadable(input: object): ReadableMetaInfo {
   }
 
   return metaInfo as ReadableMetaInfo
+}
+
+export function getInfoHash(metaInfo: DecodedMetaInfo): Buffer {
+  const bencodedInfo = encode(metaInfo.info)
+  const infoHash = createHash('sha1').update(bencodedInfo).digest()
+
+  return infoHash
+}
+
+export function getTorrentSize(metaInfo: DecodedMetaInfo): Buffer {
+  let size: bigint
+
+  const { info } = metaInfo
+  if (info.files) {
+    const lengthArray = info.files.map((file) => BigInt(file.length))
+    size = lengthArray.reduce((prev, cur) => prev + cur, BigInt(0))
+  } else size = BigInt(info.length || 0)
+
+  const sizeBuffer = toBufferBE(size, 1)
+  return sizeBuffer
 }
