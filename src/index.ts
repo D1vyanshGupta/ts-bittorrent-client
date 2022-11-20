@@ -3,8 +3,8 @@ import { decode } from 'bencode'
 import { readFileSync } from 'fs'
 
 import { DecodedMetaInfo } from './types'
-import { getPeers } from './helpers/tracker'
 import { logger, logMetaInfo } from './helpers/logging'
+import { UDPTrackerClient } from './helpers/tracker-client'
 import { parseMetaInfoToReadable } from './helpers/meta-info'
 
 const FILE_NAME = 'puppy.torrent'
@@ -20,7 +20,9 @@ function parseMetaInfoFromFile(): DecodedMetaInfo {
 }
 
 const metaInfo = parseMetaInfoFromFile()
-getPeers(metaInfo, 20000)
+const trackerClient = new UDPTrackerClient(metaInfo)
+trackerClient
+  .getPeersForTorrent(20000)
   .then((peers) => {
     logger.info(peers)
   })
