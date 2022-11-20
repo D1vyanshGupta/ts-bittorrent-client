@@ -8,7 +8,7 @@ import { getInfoHash, getTorrentSize } from './meta-info'
 import {
   CONNECT_EVENT,
   ANNOUNCE_EVENT,
-  BUILD_CONN_REQ_CONN_ID
+  BUILD_CONN_REQ_PROTOCOL_ID
 } from '../constants'
 
 import {
@@ -18,16 +18,18 @@ import {
   ConnectionResponse
 } from '../types'
 
-// Offset  Size            Name            Value
-// 0       32-bit integer  action          0 // connect
-// 4       32-bit integer  transaction_id
-// 8       64-bit integer  connection_id
-// 16
+/*
+Offset  Size            Name            Value
+0       64-bit integer  protocol_id     0x41727101980 // magic constant
+8       32-bit integer  action          0 // connect
+12      32-bit integer  transaction_id
+16
+*/
 function buildConnReqBuffer(): Buffer {
   const buffer = Buffer.alloc(16)
 
-  // connection id fixed as 0x41727101980 as per BEP (64 bits)
-  buffer.writeBigInt64BE(BUILD_CONN_REQ_CONN_ID, 0)
+  // protocol id fixed as 0x41727101980 as per BEP: 15
+  buffer.writeBigInt64BE(BUILD_CONN_REQ_PROTOCOL_ID, 0)
 
   // action
   // 0 <=> connection request (as per BEP) (32 bits)
