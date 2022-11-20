@@ -19,6 +19,7 @@ import {
 } from '../types'
 
 /*
+BEP: 15
 Offset  Size            Name            Value
 0       64-bit integer  protocol_id     0x41727101980 // magic constant
 8       32-bit integer  action          0 // connect
@@ -41,11 +42,14 @@ function buildConnReqBuffer(): Buffer {
   return buffer
 }
 
-// Offset  Size            Name            Value
-// 0       32-bit integer  action          0 // connect
-// 4       32-bit integer  transaction_id
-// 8       64-bit integer  connection_id
-// 16
+/*
+BEP: 15
+Offset  Size            Name            Value
+0       32-bit integer  action          0 // connect
+4       32-bit integer  transaction_id
+8       64-bit integer  connection_id
+16
+*/
 function parseConnRespBuffer(respBuffer: Buffer): ConnectionResponse {
   return {
     action: respBuffer.readUInt32BE(0),
@@ -54,21 +58,24 @@ function parseConnRespBuffer(respBuffer: Buffer): ConnectionResponse {
   }
 }
 
-// Offset  Size    Name    Value
-// 0       64-bit integer  connection_id
-// 8       32-bit integer  action          1 // announce
-// 12      32-bit integer  transaction_id
-// 16      20-byte string  info_hash
-// 36      20-byte string  peer_id
-// 56      64-bit integer  downloaded
-// 64      64-bit integer  left
-// 72      64-bit integer  uploaded
-// 80      32-bit integer  event           0 // 0: none; 1: completed; 2: started; 3: stopped
-// 84      32-bit integer  IP address      0 // default
-// 88      32-bit integer  key             ? // random
-// 92      32-bit integer  num_want        -1 // default
-// 96      16-bit integer  port
-// 98
+/*
+BEP: 15
+Offset  Size    Name    Value
+0       64-bit integer  connection_id
+8       32-bit integer  action          1 // announce
+12      32-bit integer  transaction_id
+16      20-byte string  info_hash
+36      20-byte string  peer_id
+56      64-bit integer  downloaded
+64      64-bit integer  left
+72      64-bit integer  uploaded
+80      32-bit integer  event           0 // 0: none; 1: completed; 2: started; 3: stopped
+84      32-bit integer  IP address      0 // default
+88      32-bit integer  key
+92      32-bit integer  num_want        -1 // default
+96      16-bit integer  port
+98
+*/
 function buildAnnounceReqBuffer(
   connIdBuf: Buffer,
   metaInfo: DecodedMetaInfo,
@@ -122,15 +129,18 @@ function buildAnnounceReqBuffer(
   return buffer
 }
 
-// Offset      Size            Name            Value
-// 0           32-bit integer  action          1 // announce
-// 4           32-bit integer  transaction_id
-// 8           32-bit integer  interval
-// 12          32-bit integer  leechers
-// 16          32-bit integer  seeders
-// 20 + 6 * n  32-bit integer  IP address
-// 24 + 6 * n  16-bit integer  TCP port
-// 20 + 6 * N
+/*
+BEP: 15
+Offset      Size            Name            Value
+0           32-bit integer  action          1 // announce
+4           32-bit integer  transaction_id
+8           32-bit integer  interval
+12          32-bit integer  leechers
+16          32-bit integer  seeders
+20 + 6 * n  32-bit integer  IP address
+24 + 6 * n  16-bit integer  TCP port
+20 + 6 * N
+*/
 function parseAnnounceRespBuffer(respBuffer: Buffer): AnnounceResponse {
   const peerList = splitBufferToChunks(respBuffer.subarray(20), 6)
 
