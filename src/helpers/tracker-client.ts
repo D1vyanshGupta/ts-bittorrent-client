@@ -31,7 +31,7 @@ export class UDPTrackerClient {
 
   private static NUM_MAX_CONN_REQUESTS = 8
 
-  // implement exponential backoff for fetching connection ID, as per BEP: 15
+  // calculate timeout for exponential backoff, as per BEP: 15
   private static getConnReqTimeout(numTries: number): number {
     return 1000 * 15 * 2 ** numTries
   }
@@ -230,6 +230,7 @@ export class UDPTrackerClient {
     }
   }
 
+  // implement exponential backoff for fetching connection ID, as per BEP: 15
   private sendConnRequest(timeoutMs: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const connReqestBuffer = this.buildConnRequest()
