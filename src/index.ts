@@ -21,11 +21,6 @@ function parseMetaInfoFromFile(): DecodedMetaInfo {
 
 const metaInfo = parseMetaInfoFromFile()
 const trackerClient = new UDPTrackerClient(metaInfo)
-trackerClient
-  .getPeersForTorrent(20000)
-  .then((peers) => {
-    logger.info(peers)
-  })
-  .catch((error) => {
-    logger.error(error?.message)
-  })
+trackerClient.getConnIDFromTracker().catch((error) => {
+  logger.error(error.message)
+})

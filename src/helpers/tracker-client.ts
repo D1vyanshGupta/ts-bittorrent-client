@@ -19,13 +19,21 @@ import {
 } from '../types'
 
 export class UDPTrackerClient {
-  private connIDBuff: Buffer
-  private transcIDBuff: Buffer
+  private socket: Socket
+  private socketPort: number
 
+  private connIDBuffer: Buffer
+  private connIDRecvTime: number
+  private transcIDBuffer: Buffer
+
+  private announceUrl: URL
   private metaInfo: DecodedMetaInfo
 
-  constructor(metaInfo: DecodedMetaInfo) {
-    this.metaInfo = metaInfo
+  private static NUM_MAX_CONN_REQUESTS = 8
+
+  // implement exponential backoff for fetching connection ID, as per BEP: 15
+  private static getConnReqTimeout(numTries: number): number {
+    return 1000 * 15 * 2 ** numTries
   }
 
   private static getResponseType(respBuffer: Buffer): string {
@@ -34,19 +42,24 @@ export class UDPTrackerClient {
     return ANNOUNCE_EVENT
   }
 
-  private static udpSend(
-    socket: Socket,
-    msgBuffer: Buffer,
-    urlString: string,
-    callBack: (any) => void
-  ): void {
-    const url = new URL(urlString)
-    socket.send(
+  constructor(metaInfo: DecodedMetaInfo, port = 6881) {
+    this.metaInfo = metaInfo
+    this.announceUrl = new URL(this.metaInfo.announce.toString('utf8'))
+
+    this.socketPort = port
+    this.socket = createSocket('udp4')
+    this.socket.bind(this.socketPort, () => {
+      logger.info(`listening on port: ${this.socketPort}`)
+    })
+  }
+
+  private sendUDPDatagram(msgBuffer: Buffer, callBack: (any) => void): void {
+    this.socket.send(
       msgBuffer,
       0,
       msgBuffer.length,
-      +url.port,
-      url.hostname,
+      +this.announceUrl.port,
+      this.announceUrl.hostname,
       callBack
     )
   }
@@ -70,9 +83,9 @@ export class UDPTrackerClient {
     buffer.writeUInt32BE(0, 8)
 
     // create random transaction ID
-    const transcIDBuffer = randomBytes(4)
-    transcIDBuffer.copy(buffer, 12)
-    this.transcIDBuff = transcIDBuffer
+    const transcIDBufferer = randomBytes(4)
+    transcIDBufferer.copy(buffer, 12)
+    this.transcIDBuffer = transcIDBufferer
 
     return buffer
   }
@@ -86,23 +99,27 @@ export class UDPTrackerClient {
   16
   */
   private parseConnResponse(respBuffer: Buffer): ConnectionResponse | null {
+    const recvTime = Date.now()
+
     // response buffer should be atleast 16 bytes
     if (respBuffer.length < 16) return null
 
     const action = respBuffer.readInt32BE(0)
     if (action !== 0) return null
 
-    const rcvdTranscIDBuff = respBuffer.subarray(4, 8)
-    const isSame = Buffer.compare(this.transcIDBuff, rcvdTranscIDBuff) === 0
+    const rcvdtranscIDBuffer = respBuffer.subarray(4, 8)
+    const isSame = Buffer.compare(this.transcIDBuffer, rcvdtranscIDBuffer) === 0
     if (!isSame) return null
 
-    const rcvdConnIdBuff = respBuffer.subarray(8, 16)
-    this.connIDBuff = rcvdConnIdBuff
+    const rcvdconnIDBuffer = respBuffer.subarray(8, 16)
+
+    this.connIDBuffer = rcvdconnIDBuffer
+    this.connIDRecvTime = recvTime
 
     return {
       action,
-      transactionId: rcvdTranscIDBuff.readInt32BE(0),
-      connectionId: rcvdConnIdBuff
+      transactionId: rcvdtranscIDBuffer.readInt32BE(0),
+      connectionId: rcvdconnIDBuffer
     }
   }
 
@@ -123,18 +140,18 @@ export class UDPTrackerClient {
   96      16-bit integer  port
   98
   */
-  private buildAnnounceRequest(port = 6881): Buffer {
+  private buildAnnounceRequest(): Buffer {
     const buffer = Buffer.allocUnsafe(98)
 
     // connection_id
-    this.connIDBuff.copy(buffer, 0)
+    this.connIDBuffer.copy(buffer, 0)
 
     // action
     // 1 <=> announce request
     buffer.writeUInt32BE(1, 8)
 
     // transaction_id
-    this.transcIDBuff.copy(buffer, 12)
+    this.transcIDBuffer.copy(buffer, 12)
 
     // info_hash
     const infoHashBuff = getInfoHash(this.metaInfo)
@@ -168,13 +185,13 @@ export class UDPTrackerClient {
     buffer.writeInt32BE(-1, 92)
 
     // port
-    buffer.writeUInt16BE(port, 96)
+    buffer.writeUInt16BE(this.socketPort, 96)
 
     return buffer
   }
 
   /*
-  BERP: 15
+  BEP: 15
   Offset      Size            Name            Value
   0           32-bit integer  action          1 // announce
   4           32-bit integer  transaction_id
@@ -191,8 +208,8 @@ export class UDPTrackerClient {
     const action = respBuffer.readUint32BE(0)
     if (action !== 1) return null
 
-    const transcIDBuff = respBuffer.subarray(4, 8)
-    const isSame = Buffer.compare(this.transcIDBuff, transcIDBuff) === 0
+    const transcIDBuffer = respBuffer.subarray(4, 8)
+    const isSame = Buffer.compare(this.transcIDBuffer, transcIDBuffer) === 0
     if (!isSame) return null
 
     const peerList = splitBufferToChunks(respBuffer.subarray(20), 6)
@@ -213,55 +230,109 @@ export class UDPTrackerClient {
     }
   }
 
-  getPeersForTorrent(timeoutMs = 5000): Promise<Peer[]> {
-    const socket = createSocket('udp4')
-    const annnounceUrl = this.metaInfo.announce.toString('utf-8')
-
-    const connReqestBuff = this.buildConnRequest()
-    UDPTrackerClient.udpSend(socket, connReqestBuff, annnounceUrl, () => {
-      logger.info(`sent connection request to ${annnounceUrl}`)
-    })
-
+  private sendConnRequest(timeoutMs: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(
-          new Error(
-            `unable to fetch peers from ${annnounceUrl} within ${
-              timeoutMs / 1000
-            } sec`
-          )
-        )
-      }, timeoutMs)
+      const connReqestBuffer = this.buildConnRequest()
 
-      socket.on('message', (respBuffer) => {
-        const responseType = UDPTrackerClient.getResponseType(respBuffer)
+      this.sendUDPDatagram(connReqestBuffer, () => {
+        logger.info(`sent connection request to ${this.announceUrl}`)
 
-        if (responseType === CONNECT_EVENT) {
-          logger.info(`received connection response from ${annnounceUrl}`)
+        const callback = (respBuffer: Buffer): void => {
+          const responseType = UDPTrackerClient.getResponseType(respBuffer)
 
-          const connResponse = this.parseConnResponse(respBuffer)
-          if (!connResponse) return
-
-          const announceRequestBuff = this.buildAnnounceRequest()
-
-          UDPTrackerClient.udpSend(
-            socket,
-            announceRequestBuff,
-            annnounceUrl,
-            () => {
-              logger.info(`sent announce request to ${annnounceUrl}`)
-            }
-          )
-        } else if (responseType === ANNOUNCE_EVENT) {
-          logger.info(`received announce response from ${annnounceUrl}`)
-
-          const announceResponse = this.parseAnnounceResponse(respBuffer)
-          if (!announceResponse) return
-
-          clearTimeout(timer)
-          resolve(announceResponse.peers)
+          if (responseType === CONNECT_EVENT) {
+            logger.info
+            clearTimeout(timer)
+            logger.info(`received connection response from ${this.announceUrl}`)
+            this.parseConnResponse(respBuffer)
+            resolve()
+          }
         }
+
+        const timer = setTimeout(() => {
+          const error = Error(
+            `connection response not received within ${
+              timeoutMs / 1000
+            } seconds`
+          )
+          this.socket.removeListener('message', callback)
+          reject(error)
+        }, timeoutMs)
+
+        this.socket.once('message', callback)
       })
     })
   }
+
+  async getConnIDFromTracker(): Promise<void> {
+    let numTries = 0
+
+    // eslint-disable-next-line no-loops/no-loops
+    while (numTries < UDPTrackerClient.NUM_MAX_CONN_REQUESTS) {
+      const timeoutMs = UDPTrackerClient.getConnReqTimeout(numTries)
+      try {
+        await this.sendConnRequest(timeoutMs)
+        logger.info(this.connIDBuffer.toString('hex'))
+        break
+      } catch (error) {
+        logger.error(error.message)
+      }
+      numTries = numTries + 1
+    }
+
+    if (numTries === UDPTrackerClient.NUM_MAX_CONN_REQUESTS)
+      throw Error(`unable to get connection ID from ${this.announceUrl}`)
+  }
+
+  // getPeersForTorrent(timeoutMs = 5000): Promise<Peer[]> {
+  //   const socket = createSocket('udp4')
+  //   const annnounceUrl = this.metaInfo.announce.toString('utf-8')
+
+  //   const connReqestBuff = this.buildConnRequest()
+  //   UDPTrackerClient.udpSend(socket, connReqestBuff, annnounceUrl, () => {
+  //     logger.info(`sent connection request to ${annnounceUrl}`)
+  //   })
+
+  //   return new Promise((resolve, reject) => {
+  //     const timer = setTimeout(() => {
+  //       reject(
+  //         new Error(
+  //           `unable to fetch peers from ${annnounceUrl} within ${
+  //             timeoutMs / 1000
+  //           } sec`
+  //         )
+  //       )
+  //     }, timeoutMs)
+
+  //     socket.on('message', (respBuffer) => {
+  //       const responseType = UDPTrackerClient.getResponseType(respBuffer)
+
+  //       if (responseType === CONNECT_EVENT) {
+  //         logger.info(`received connection response from ${annnounceUrl}`)
+
+  //         const connResponse = this.parseConnResponse(respBuffer)
+  //         if (!connResponse) return
+
+  //         const announceRequestBuff = this.buildAnnounceRequest()
+
+  //         UDPTrackerClient.udpSend(
+  //           socket,
+  //           announceRequestBuff,
+  //           annnounceUrl,
+  //           () => {
+  //             logger.info(`sent announce request to ${annnounceUrl}`)
+  //           }
+  //         )
+  //       } else if (responseType === ANNOUNCE_EVENT) {
+  //         logger.info(`received announce response from ${annnounceUrl}`)
+
+  //         const announceResponse = this.parseAnnounceResponse(respBuffer)
+  //         if (!announceResponse) return
+
+  //         clearTimeout(timer)
+  //         resolve(announceResponse.peers)
+  //       }
+  //     })
+  //   })
+  // }
 }
