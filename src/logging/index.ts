@@ -1,7 +1,7 @@
 import pino from 'pino'
 import pretty from 'pino-pretty'
 
-import { isObject } from './misc'
+import { isObject } from '../helpers'
 import { ReadableMetaInfo } from '../types'
 
 export const logger = pino(pretty())

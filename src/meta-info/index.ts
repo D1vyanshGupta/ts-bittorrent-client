@@ -2,7 +2,7 @@ import { encode } from 'bencode'
 import { createHash } from 'crypto'
 import { toBufferBE } from 'bigint-buffer'
 
-import { isObject } from './misc'
+import { isObject } from '../helpers'
 import { DecodedMetaInfo, ReadableMetaInfo } from '../types'
 
 function getHashListFromBuffer(buffer: Buffer): string[] {
@@ -11,15 +11,15 @@ function getHashListFromBuffer(buffer: Buffer): string[] {
   // SHA1 hash is 160 bits long == 40 hex chars
   const hashList: string[] = []
 
-  let startIdx = 0
+  let startIndex = 0
   const hashLength = hashString.length
 
   //eslint-disable-next-line no-loops/no-loops
-  while (startIdx < hashLength) {
-    const pieceHash = hashString.slice(startIdx, startIdx + 40)
+  while (startIndex < hashLength) {
+    const pieceHash = hashString.slice(startIndex, startIndex + 40)
     hashList.push(pieceHash)
 
-    startIdx += 40
+    startIndex += 40
   }
 
   return hashList

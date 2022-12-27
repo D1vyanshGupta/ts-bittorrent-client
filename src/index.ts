@@ -3,11 +3,11 @@ import { decode } from 'bencode'
 import { readFileSync } from 'fs'
 
 import { DecodedMetaInfo } from './types'
-import { logger, logMetaInfo } from './helpers/logging'
-import { UDPTrackerClient } from './helpers/tracker-client'
-import { parseMetaInfoToReadable } from './helpers/meta-info'
+import { logger, logMetaInfo } from './logging'
+import { UDPTrackerClient } from './tracker-client'
+import { parseMetaInfoToReadable } from './meta-info'
 
-const FILE_NAME = 'puppy.torrent'
+const FILE_NAME = 'noragami.torrent'
 
 function parseMetaInfoFromFile(): DecodedMetaInfo {
   const filePath = join(process.cwd(), FILE_NAME)
@@ -21,6 +21,6 @@ function parseMetaInfoFromFile(): DecodedMetaInfo {
 
 const metaInfo = parseMetaInfoFromFile()
 const trackerClient = new UDPTrackerClient(metaInfo)
-trackerClient.getConnIDFromTracker().catch((error) => {
+trackerClient.getConnectionID().catch((error) => {
   logger.error(error.message)
 })

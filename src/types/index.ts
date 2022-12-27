@@ -39,9 +39,8 @@ export type ReadableMetaInfo = {
 }
 
 export type ConnectionResponse = {
-  action: number
-  transactionId: number
-  connectionId: Buffer
+  receiptTime: number
+  connectionID: Buffer
 }
 
 export type Peer = {
@@ -50,9 +49,7 @@ export type Peer = {
 }
 
 export type AnnounceResponse = {
-  action: number
-  transactionId: number
-  leechers: number
-  seeders: number
   peers: Peer[]
+  seeders: number
+  leechers: number
 }
