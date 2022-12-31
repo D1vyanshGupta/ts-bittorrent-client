@@ -5,10 +5,12 @@ import {
   getRequestTimeout,
   buildConnectionRequest,
   getRandomTransactionID,
-  parseConnectionResponse
+  parseConnectionResponse,
+  buildAnnounceRequest,
+  parseAnnounceResponse
 } from './utils'
 
-import { DecodedMetaInfo, ConnectionResponse } from '../types'
+import { DecodedMetaInfo, ConnectionResponse, AnnounceResponse } from '../types'
 
 export class UDPTrackerClient {
   private socket: Socket
@@ -20,7 +22,9 @@ export class UDPTrackerClient {
   private announceUrl: URL
   private metaInfo: DecodedMetaInfo
 
-  private static NUM_MAX_CONN_REQUESTS = 8
+  private static NUM_MAX_REQUESTS = 8
+  // connection ID is valid for 1 min, as per BEP: 15
+  private static CONNECTION_ID_VALIDITY_MS = 60 * 1000
 
   constructor(metaInfo: DecodedMetaInfo, port = 6881) {
     this.metaInfo = metaInfo
@@ -56,8 +60,12 @@ export class UDPTrackerClient {
       const connectionRequest = buildConnectionRequest(transactionID)
 
       try {
-        this.sendUDPDatagram(connectionRequest, () => {
-          logger.info(`sent connection request to ${this.announceUrl}`)
+        this.sendUDPDatagram(connectionRequest, (): void => {
+          logger.info(
+            `sent connection request to ${
+              this.announceUrl
+            } at ${new Date().toISOString()}`
+          )
 
           const callback = (response: Buffer): void => {
             try {
@@ -75,7 +83,7 @@ export class UDPTrackerClient {
             }
           }
 
-          const timer = setTimeout(() => {
+          const timer = setTimeout((): void => {
             const error = Error(
               `connection response not received within ${
                 timeoutMs / 1000
@@ -96,12 +104,12 @@ export class UDPTrackerClient {
     })
   }
 
-  async getConnectionID(): Promise<void> {
+  private async getConnectionID(): Promise<void> {
     let numTries = 0
 
     // exponential backoff for fetching connection ID, as per BEP: 15
     // eslint-disable-next-line no-loops/no-loops
-    while (numTries < UDPTrackerClient.NUM_MAX_CONN_REQUESTS) {
+    while (numTries < UDPTrackerClient.NUM_MAX_REQUESTS) {
       const timeoutMs = getRequestTimeout(numTries)
       try {
         const { connectionID, receiptTime } = await this.sendConnectionRequest(
@@ -121,8 +129,106 @@ export class UDPTrackerClient {
       numTries = numTries + 1
     }
 
-    if (numTries === UDPTrackerClient.NUM_MAX_CONN_REQUESTS)
+    if (numTries === UDPTrackerClient.NUM_MAX_REQUESTS)
       throw Error(`unable to get connection ID from ${this.announceUrl}`)
+  }
+
+  private isConnectionIDValid(): boolean {
+    if (!this.connectionID) return false
+
+    const diffMs = Date.now() - this.connectionReceiptTime
+    return diffMs < UDPTrackerClient.CONNECTION_ID_VALIDITY_MS
+  }
+
+  private sendAnnounceRequest(timeoutMs: number): Promise<AnnounceResponse> {
+    return new Promise((resolve, reject) => {
+      const transactionID = getRandomTransactionID()
+      const announceRequest = buildAnnounceRequest(
+        this.socketPort,
+        this.metaInfo,
+        this.connectionID,
+        transactionID
+      )
+
+      try {
+        this.sendUDPDatagram(announceRequest, (): void => {
+          logger.info(
+            `sent announce request to ${
+              this.announceUrl
+            } at ${new Date().toISOString()}`
+          )
+
+          const callback = (response: Buffer): void => {
+            try {
+              clearTimeout(timer)
+              const announceResponse = parseAnnounceResponse(
+                transactionID,
+                response
+              )
+              resolve(announceResponse)
+            } catch (error) {
+              const parseError = Error(
+                `unable to parse announce response: ${error.message || error}`
+              )
+              reject(parseError)
+            }
+          }
+
+          const timer = setTimeout((): void => {
+            const timeoutError = Error(
+              `announce response not received within ${
+                timeoutMs / 1000
+              } seconds`
+            )
+
+            this.socket.removeListener('message', callback)
+            reject(timeoutError)
+          }, timeoutMs)
+
+          this.socket.once('message', callback)
+        })
+      } catch (error) {
+        const requestError = Error(
+          `unable to send announce request: ${error.message || error}`
+        )
+        reject(requestError)
+      }
+    })
+  }
+
+  async getPeersForTorrent(): Promise<AnnounceResponse> {
+    let numTries = 0
+    let numRequests = 0
+
+    // eslint-disable-next-line no-loops/no-loops
+    while (numRequests < UDPTrackerClient.NUM_MAX_REQUESTS) {
+      if (!this.isConnectionIDValid()) {
+        await this.getConnectionID().catch((error) => {
+          throw Error(
+            `cannot send announce request because unable to get connection ID: ${
+              error.message || error
+            }`
+          )
+        })
+        numTries = 0
+      }
+
+      const requestTimeout = getRequestTimeout(numTries)
+
+      try {
+        numRequests = numRequests + 1
+        const announceResponse = await this.sendAnnounceRequest(requestTimeout)
+
+        logger.info(`received announce response at ${new Date().toISOString()}`)
+
+        return announceResponse
+      } catch (error) {
+        logger.error(error.message || error)
+      }
+      numTries = numTries + 1
+    }
+
+    throw Error(`unable to get announce response from ${this.announceUrl}`)
   }
 
   // getPeersForTorrent(timeoutMs = 5000): Promise<Peer[]> {

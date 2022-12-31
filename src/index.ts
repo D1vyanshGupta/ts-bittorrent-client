@@ -7,7 +7,8 @@ import { logger, logMetaInfo } from './logging'
 import { UDPTrackerClient } from './tracker-client'
 import { parseMetaInfoToReadable } from './meta-info'
 
-const FILE_NAME = 'noragami.torrent'
+// const FILE_NAME = 'shri-durga-stuti-chaman-lal-bhardwaj-chaman_archive.torrent'
+const FILE_NAME = 'phonnyo.torrent'
 
 function parseMetaInfoFromFile(): DecodedMetaInfo {
   const filePath = join(process.cwd(), FILE_NAME)
@@ -21,6 +22,18 @@ function parseMetaInfoFromFile(): DecodedMetaInfo {
 
 const metaInfo = parseMetaInfoFromFile()
 const trackerClient = new UDPTrackerClient(metaInfo)
-trackerClient.getConnectionID().catch((error) => {
-  logger.error(error.message)
-})
+trackerClient
+  .getPeersForTorrent()
+  .then((response) => {
+    response.peers.forEach((peer, idx) => {
+      logger.info(
+        `Peer ${idx + 1} => ip: ${peer.ip.toString('hex')}, port: ${peer.port}`
+      )
+
+      logger.info(`#seeders: ${response.seeders}`)
+      logger.info(`#leechers: ${response.leechers}`)
+    })
+  })
+  .catch((error) => {
+    logger.error(error.message)
+  })

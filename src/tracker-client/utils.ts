@@ -107,6 +107,7 @@ export function parseConnectionResponse(
   98
   */
 export function buildAnnounceRequest(
+  socketPort: number,
   metaInfo: DecodedMetaInfo,
   connectionID: Buffer,
   transactionID: Buffer
@@ -124,7 +125,7 @@ export function buildAnnounceRequest(
   transactionID.copy(buffer, 12)
 
   // info_hash
-  const infoHash = getInfoHash(this.metaInfo)
+  const infoHash = getInfoHash(metaInfo)
   infoHash.copy(buffer, 16)
 
   // peer_id
@@ -135,7 +136,7 @@ export function buildAnnounceRequest(
   buffer.writeUInt32BE(0, 56)
 
   // left (entire file as of now)
-  const size = getTorrentSize(this.metaInfo)
+  const size = getTorrentSize(metaInfo)
   size.copy(buffer, 64)
 
   // uploaded (0 as of now)
@@ -155,7 +156,7 @@ export function buildAnnounceRequest(
   buffer.writeInt32BE(-1, 92)
 
   // port
-  buffer.writeUInt16BE(this.socketPort, 96)
+  buffer.writeUInt16BE(socketPort, 96)
 
   return buffer
 }
