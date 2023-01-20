@@ -27,12 +27,17 @@ export class UDPTrackerClient {
   // connection ID is valid for 1 min, as per BEP: 15
   private static CONNECTION_ID_VALIDITY_MS = 60 * 1000
 
-  constructor(metaInfo: DecodedMetaInfo, port = 6881) {
+  constructor(
+    metaInfo: DecodedMetaInfo,
+    socket: Socket = createSocket('udp4'),
+    port = 6881
+  ) {
     this.metaInfo = metaInfo
     this.announceUrl = new URL(this.metaInfo.announce.toString('utf8'))
 
+    this.socket = socket
     this.socketPort = port
-    this.socket = createSocket('udp4')
+
     this.socket.bind(this.socketPort, () => {
       logger.info(`listening on port: ${this.socketPort}`)
     })
