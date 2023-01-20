@@ -134,9 +134,19 @@ describe('utils', () => {
       connectionID = randomBytes(CONN_ID_LENGTH)
       transactionID = randomBytes(TRANSACTION_ID_LENGTH)
 
-      const fixturesDir = path.join(__dirname, 'fixtures')
-      const filePath = path.join(fixturesDir, readdirSync(fixturesDir)[0])
-      metaInfo = decode(readFileSync(filePath))
+      const numPieces = Math.ceil((Math.random() + 0.1) * 10)
+      const pieceLength = Math.ceil((Math.random() + 1) * 10)
+      const pieces = randomBytes(numPieces * pieceLength)
+
+      metaInfo = {
+        announce: randomBytes(Math.ceil((Math.random() + 1) * 10)),
+        info: {
+          name: randomBytes(Math.ceil((Math.random() + 1) * 10)),
+          pieces,
+          'piece length': pieceLength,
+          length: pieces.length
+        }
+      }
 
       announceRequest = buildAnnounceRequest(
         socketPort,
