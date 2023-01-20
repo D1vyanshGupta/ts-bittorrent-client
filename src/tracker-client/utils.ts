@@ -4,8 +4,10 @@ import getPeerId from './peer-id'
 import { getInfoHash, getTorrentSize } from '../meta-info'
 
 import {
+  PEER_LENGTH,
   CONNECT_EVENT,
   ANNOUNCE_EVENT,
+  CONN_RESP_MIN_LENGTH,
   BUILD_CONN_REQ_PROTOCOL_ID
 } from '../constants'
 
@@ -25,10 +27,6 @@ export function getResponseType(response: Buffer): string {
   const action = response.readUInt32BE(0)
   if (action === 0) return CONNECT_EVENT
   return ANNOUNCE_EVENT
-}
-
-export function getRandomTransactionID(): Buffer {
-  return randomBytes(4)
 }
 
 /*
@@ -70,7 +68,8 @@ export function parseConnectionResponse(
   const receiptTime = Date.now()
 
   // response buffer should be atleast 16 bytes
-  if (response.length < 16) throw Error('response has size less than 16 bytes')
+  if (response.length < CONN_RESP_MIN_LENGTH)
+    throw Error(`response has size less than ${CONN_RESP_MIN_LENGTH} bytes`)
 
   const responseType = getResponseType(response)
   if (responseType !== CONNECT_EVENT)
@@ -133,14 +132,14 @@ export function buildAnnounceRequest(
   peerId.copy(buffer, 36)
 
   // downloaded (0 as of now)
-  buffer.writeUInt32BE(0, 56)
+  buffer.writeBigUInt64BE(BigInt(0), 56)
 
   // left (entire file as of now)
   const size = getTorrentSize(metaInfo)
-  size.copy(buffer, 64)
+  buffer.writeBigUInt64BE(size, 64)
 
   // uploaded (0 as of now)
-  buffer.writeUInt32BE(0, 72)
+  buffer.writeBigUInt64BE(BigInt(0), 72)
 
   // event (0: none)
   buffer.writeUInt32BE(0, 80)
@@ -205,7 +204,7 @@ export function parseAnnounceResponse(
   if (!isSame)
     throw Error('response does not correspond to given transactionID')
 
-  const peerList = splitBufferToChunks(response.subarray(20), 6)
+  const peerList = splitBufferToChunks(response.subarray(20), PEER_LENGTH)
 
   const peers = peerList.map(
     (peer: Buffer): Peer => ({

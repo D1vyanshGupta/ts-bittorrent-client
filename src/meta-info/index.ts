@@ -1,6 +1,5 @@
 import { encode } from 'bencode'
 import { createHash } from 'crypto'
-import { toBufferBE } from 'bigint-buffer'
 
 import { isObject } from '../helpers'
 import { DecodedMetaInfo, ReadableMetaInfo } from '../types'
@@ -55,7 +54,7 @@ export function getInfoHash(metaInfo: DecodedMetaInfo): Buffer {
   return infoHash
 }
 
-export function getTorrentSize(metaInfo: DecodedMetaInfo): Buffer {
+export function getTorrentSize(metaInfo: DecodedMetaInfo): bigint {
   let size: bigint
 
   const { info } = metaInfo
@@ -64,6 +63,5 @@ export function getTorrentSize(metaInfo: DecodedMetaInfo): Buffer {
     size = lengthArray.reduce((prev, cur) => prev + cur, BigInt(0))
   } else size = BigInt(info.length || 0)
 
-  const sizeBuffer = toBufferBE(size, 1)
-  return sizeBuffer
+  return size
 }

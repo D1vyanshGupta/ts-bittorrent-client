@@ -1,15 +1,16 @@
+import { randomBytes } from 'crypto'
 import { Socket, createSocket } from 'dgram'
 
-import { logger } from '../logging'
 import {
   getRequestTimeout,
-  buildConnectionRequest,
-  getRandomTransactionID,
-  parseConnectionResponse,
   buildAnnounceRequest,
-  parseAnnounceResponse
+  parseAnnounceResponse,
+  buildConnectionRequest,
+  parseConnectionResponse
 } from './utils'
 
+import { logger } from '../logging'
+import { TRANSACTION_ID_LENGTH } from '../constants'
 import { DecodedMetaInfo, ConnectionResponse, AnnounceResponse } from '../types'
 
 export class UDPTrackerClient {
@@ -56,7 +57,7 @@ export class UDPTrackerClient {
     timeoutMs: number
   ): Promise<ConnectionResponse> {
     return new Promise((resolve, reject) => {
-      const transactionID = getRandomTransactionID()
+      const transactionID = randomBytes(TRANSACTION_ID_LENGTH)
       const connectionRequest = buildConnectionRequest(transactionID)
 
       try {
@@ -142,7 +143,7 @@ export class UDPTrackerClient {
 
   private sendAnnounceRequest(timeoutMs: number): Promise<AnnounceResponse> {
     return new Promise((resolve, reject) => {
-      const transactionID = getRandomTransactionID()
+      const transactionID = randomBytes(TRANSACTION_ID_LENGTH)
       const announceRequest = buildAnnounceRequest(
         this.socketPort,
         this.metaInfo,

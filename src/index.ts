@@ -7,7 +7,6 @@ import { logger, logMetaInfo } from './logging'
 import { UDPTrackerClient } from './tracker-client'
 import { parseMetaInfoToReadable } from './meta-info'
 
-// const FILE_NAME = 'shri-durga-stuti-chaman-lal-bhardwaj-chaman_archive.torrent'
 const FILE_NAME = 'phonnyo.torrent'
 
 function parseMetaInfoFromFile(): DecodedMetaInfo {
