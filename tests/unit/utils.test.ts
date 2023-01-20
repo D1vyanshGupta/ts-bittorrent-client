@@ -1,8 +1,4 @@
-import path from 'path'
 import { randomBytes } from 'crypto'
-import { readFileSync, readdirSync } from 'fs'
-
-import { decode } from 'bencode'
 
 import {
   buildAnnounceRequest,
