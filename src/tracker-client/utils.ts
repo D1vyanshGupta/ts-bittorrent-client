@@ -4,12 +4,21 @@ import getPeerId from './peer-id'
 import { getInfoHash, getTorrentSize } from '../meta-info'
 
 import {
+  getResponseLengthLessThanErrorMsg,
+  getResponseNotCorrespondEventErrorMsg,
+  responseNotCorrespondTransactionErrorMsg
+} from '../constants/error-message'
+
+import {
   PEER_LENGTH,
   CONNECT_EVENT,
   ANNOUNCE_EVENT,
+  CONN_REQ_MIN_LENGTH,
   CONN_RESP_MIN_LENGTH,
-  BUILD_CONN_REQ_PROTOCOL_ID
-} from '../constants'
+  ANNOUNCE_RESP_MIN_LENGTH,
+  BUILD_CONN_REQ_PROTOCOL_ID,
+  ANNOUNCE_REQ_MIN_LENGTH
+} from '../constants/protocol'
 
 import {
   Peer,
@@ -19,8 +28,8 @@ import {
 } from '../types'
 
 // calculate timeout for exponential backoff, as per BEP: 15
-export function getRequestTimeout(numTries: number): number {
-  return 1000 * 15 * 2 ** numTries
+export function getRequestTimeoutMs(requestIdx: number): number {
+  return 1000 * 15 * 2 ** requestIdx
 }
 
 export function getResponseType(response: Buffer): string {
@@ -38,7 +47,7 @@ export function getResponseType(response: Buffer): string {
   16
   */
 export function buildConnectionRequest(transactionID: Buffer): Buffer {
-  const buffer = Buffer.allocUnsafe(16)
+  const buffer = Buffer.allocUnsafe(CONN_REQ_MIN_LENGTH)
 
   // protocol_id 0x41727101980, fixed as per BEP: 15
   buffer.writeBigInt64BE(BUILD_CONN_REQ_PROTOCOL_ID, 0)
@@ -69,16 +78,15 @@ export function parseConnectionResponse(
 
   // response buffer should be atleast 16 bytes
   if (response.length < CONN_RESP_MIN_LENGTH)
-    throw Error(`response has size less than ${CONN_RESP_MIN_LENGTH} bytes`)
+    throw Error(getResponseLengthLessThanErrorMsg(CONN_RESP_MIN_LENGTH))
 
   const responseType = getResponseType(response)
   if (responseType !== CONNECT_EVENT)
-    throw Error('response does not correspond to a connection request')
+    throw Error(getResponseNotCorrespondEventErrorMsg(CONNECT_EVENT))
 
   const responseTransactionID = response.subarray(4, 8)
   const isSame = Buffer.compare(transactionID, responseTransactionID) === 0
-  if (!isSame)
-    throw Error('response does not correspond to given transactionID')
+  if (!isSame) throw Error(responseNotCorrespondTransactionErrorMsg)
 
   const connectionID = response.subarray(8, 16)
 
@@ -111,7 +119,7 @@ export function buildAnnounceRequest(
   connectionID: Buffer,
   transactionID: Buffer
 ): Buffer {
-  const buffer = Buffer.allocUnsafe(98)
+  const buffer = Buffer.allocUnsafe(ANNOUNCE_REQ_MIN_LENGTH)
 
   // connection_id
   connectionID.copy(buffer, 0)
@@ -193,16 +201,16 @@ export function parseAnnounceResponse(
   transactionID: Buffer,
   response: Buffer
 ): AnnounceResponse {
-  if (response.length < 20) throw Error('response has size less than 20 bytes')
+  if (response.length < ANNOUNCE_RESP_MIN_LENGTH)
+    throw Error(getResponseLengthLessThanErrorMsg(ANNOUNCE_RESP_MIN_LENGTH))
 
   const responseType = getResponseType(response)
   if (responseType !== ANNOUNCE_EVENT)
-    throw Error('response does not correspond to a announce request')
+    throw Error(getResponseNotCorrespondEventErrorMsg(ANNOUNCE_EVENT))
 
   const responseTransactionID = response.subarray(4, 8)
   const isSame = Buffer.compare(transactionID, responseTransactionID) === 0
-  if (!isSame)
-    throw Error('response does not correspond to given transactionID')
+  if (!isSame) throw Error(responseNotCorrespondTransactionErrorMsg)
 
   const peerList = splitBufferToChunks(response.subarray(20), PEER_LENGTH)
 

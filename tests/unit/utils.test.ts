@@ -8,6 +8,12 @@ import {
 } from '../../src/tracker-client/utils'
 
 import {
+  getResponseLengthLessThanErrorMsg,
+  getResponseNotCorrespondEventErrorMsg,
+  responseNotCorrespondTransactionErrorMsg
+} from '../../src/constants/error-message'
+
+import {
   PEER_LENGTH,
   CONNECT_EVENT,
   ANNOUNCE_EVENT,
@@ -16,9 +22,9 @@ import {
   CONN_RESP_MIN_LENGTH,
   TRANSACTION_ID_LENGTH,
   ANNOUNCE_REQ_MIN_LENGTH,
-  BUILD_CONN_REQ_PROTOCOL_ID,
-  ANNOUNCE_RESP_MIN_LENGTH
-} from '../../src/constants'
+  ANNOUNCE_RESP_MIN_LENGTH,
+  BUILD_CONN_REQ_PROTOCOL_ID
+} from '../../src/constants/protocol'
 
 import { DecodedMetaInfo } from '../../src/types'
 import getPeerId from '../../src/tracker-client/peer-id'
@@ -35,28 +41,28 @@ describe('utils', () => {
     })
 
     test(`connection request is at least ${CONN_REQ_MIN_LENGTH} bytes long`, () => {
-      expect(connectionRequest.length >= CONN_REQ_MIN_LENGTH).toBeTruthy()
+      expect(connectionRequest.length >= CONN_REQ_MIN_LENGTH).toBe(true)
     })
 
     test('bytes 0-7 span protocol defined special constant', () => {
       const requestID = connectionRequest.subarray(0, 8).readBigInt64BE()
 
       const isSame = requestID === BUILD_CONN_REQ_PROTOCOL_ID
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 8-11 span connect event code i.e. 0', () => {
       const eventID = connectionRequest.subarray(8, 12).readInt32BE()
 
       const isSame = eventID === 0
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 12-15 span transactionID', () => {
-      const givenTransactionID = connectionRequest.subarray(13)
+      const givenTransactionID = connectionRequest.subarray(12)
 
-      const isSame = Buffer.compare(givenTransactionID, transactionID)
-      expect(isSame).toBeTruthy()
+      const isSame = Buffer.compare(givenTransactionID, transactionID) === 0
+      expect(isSame).toBe(true)
     })
   })
 
@@ -73,9 +79,7 @@ describe('utils', () => {
 
       expect(() =>
         parseConnectionResponse(transactionID, response)
-      ).toThrowError(
-        `response has size less than ${CONN_RESP_MIN_LENGTH} bytes`
-      )
+      ).toThrowError(getResponseLengthLessThanErrorMsg(CONN_RESP_MIN_LENGTH))
     })
 
     test(`throws error if response type is not of type ${CONNECT_EVENT}`, () => {
@@ -85,7 +89,7 @@ describe('utils', () => {
 
       expect(() =>
         parseConnectionResponse(transactionID, response)
-      ).toThrowError('response does not correspond to a connection request')
+      ).toThrowError(getResponseNotCorrespondEventErrorMsg(CONNECT_EVENT))
     })
 
     test(`throws error if response does not correspond to given transactionID`, () => {
@@ -96,7 +100,7 @@ describe('utils', () => {
 
       expect(() =>
         parseConnectionResponse(transactionID, response)
-      ).toThrowError('response does not correspond to given transactionID')
+      ).toThrowError(responseNotCorrespondTransactionErrorMsg)
     })
 
     test('parses valid response', () => {
@@ -113,8 +117,8 @@ describe('utils', () => {
 
       const isSame = Buffer.compare(connectionID, parsedConnectionID) === 0
 
-      expect(receiptTime > 0).toBeTruthy()
-      expect(isSame).toBeTruthy()
+      expect(receiptTime > 0).toBe(true)
+      expect(isSame).toBe(true)
     })
   })
 
@@ -153,28 +157,28 @@ describe('utils', () => {
     })
 
     test(`announce request is at least ${ANNOUNCE_REQ_MIN_LENGTH} bytes long`, () => {
-      expect(announceRequest.length >= ANNOUNCE_REQ_MIN_LENGTH).toBeTruthy()
+      expect(announceRequest.length >= ANNOUNCE_REQ_MIN_LENGTH).toBe(true)
     })
 
     test('bytes 0-7 span connectionID', () => {
       const reqConnectionID = announceRequest.subarray(0, 8)
 
       const isSame = Buffer.compare(connectionID, reqConnectionID) === 0
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 8-11 span announce event code i.e. 1', () => {
       const eventID = announceRequest.readUInt32BE(8)
 
       const isSame = eventID === 1
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 12-15 span transactionID', () => {
       const reqTransactionID = announceRequest.subarray(12, 16)
 
       const isSame = Buffer.compare(transactionID, reqTransactionID) === 0
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 16-35 span infoHash', () => {
@@ -182,21 +186,21 @@ describe('utils', () => {
       const expectedInfoHash = getInfoHash(metaInfo)
 
       const isSame = Buffer.compare(expectedInfoHash, reqInfoHash) === 0
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 36-55 span peerId', () => {
       const reqPeerId = announceRequest.subarray(36, 56)
 
       const isSame = Buffer.compare(getPeerId(), reqPeerId) === 0
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 56-63 span number of bytes downloaded i.e. 0', () => {
       const downloaded = announceRequest.readBigUInt64BE(56)
 
       const isSame = downloaded === BigInt(0)
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 64-71 span torrent size', () => {
@@ -204,42 +208,42 @@ describe('utils', () => {
       const reqSize = announceRequest.readBigUInt64BE(64)
 
       const isSame = torrentSize === reqSize
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 72-79 span number of bytes uploaded i.e. 0', () => {
       const uploaded = announceRequest.readBigUInt64BE(72)
 
       const isSame = uploaded === BigInt(0)
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 80-83 span default event i.e. 0', () => {
       const event = announceRequest.readUInt32BE(80)
 
       const isSame = event === 0
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 84-87 span ip default address i.e. 0', () => {
       const ip = announceRequest.readUInt32BE(84)
 
       const isSame = ip === 0
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 92-95 span num_want i.e. -1', () => {
       const numWant = announceRequest.readInt32BE(92)
 
       const isSame = numWant === -1
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
 
     test('bytes 96-97 span socketPort', () => {
       const reqSocketPort = announceRequest.readUInt16BE(96)
 
       const isSame = socketPort === reqSocketPort
-      expect(isSame).toBeTruthy()
+      expect(isSame).toBe(true)
     })
   })
 
@@ -255,7 +259,7 @@ describe('utils', () => {
       response = Buffer.allocUnsafe(ANNOUNCE_RESP_MIN_LENGTH - 1)
 
       expect(() => parseAnnounceResponse(transactionID, response)).toThrowError(
-        `response has size less than ${ANNOUNCE_RESP_MIN_LENGTH} bytes`
+        getResponseLengthLessThanErrorMsg(ANNOUNCE_RESP_MIN_LENGTH)
       )
     })
 
@@ -265,7 +269,7 @@ describe('utils', () => {
       response.writeUInt32BE(0, 0)
 
       expect(() => parseAnnounceResponse(transactionID, response)).toThrowError(
-        'response does not correspond to a announce request'
+        getResponseNotCorrespondEventErrorMsg(ANNOUNCE_EVENT)
       )
     })
 
@@ -276,7 +280,7 @@ describe('utils', () => {
       randomBytes(TRANSACTION_ID_LENGTH).copy(response, 4)
 
       expect(() => parseAnnounceResponse(transactionID, response)).toThrowError(
-        'response does not correspond to given transactionID'
+        responseNotCorrespondTransactionErrorMsg
       )
     })
 
@@ -322,7 +326,7 @@ describe('utils', () => {
         })
 
         const isSame = Buffer.compare(parsedPeerBuffer, peerBuffer) === 0
-        expect(isSame).toBeTruthy()
+        expect(isSame).toBe(true)
       }
     )
   })

@@ -1,6 +1,8 @@
 import { join } from 'path'
-import { decode } from 'bencode'
 import { readFileSync } from 'fs'
+import { createSocket } from 'dgram'
+
+import { decode } from 'bencode'
 
 import { DecodedMetaInfo } from './types'
 import { logger, logMetaInfo } from './logging'
@@ -19,10 +21,10 @@ function parseMetaInfoFromFile(): DecodedMetaInfo {
   return decodedMetaInfo
 }
 
+const trackerClient = new UDPTrackerClient(createSocket('udp4'))
 const metaInfo = parseMetaInfoFromFile()
-const trackerClient = new UDPTrackerClient(metaInfo)
 trackerClient
-  .getPeersForTorrent()
+  .getPeersForTorrent(metaInfo)
   .then((response) => {
     response.peers.forEach((peer, idx) => {
       logger.info(

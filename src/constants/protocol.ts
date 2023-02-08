@@ -1,3 +1,9 @@
+export const DEFAULT_SOCKET_PORT = 6881
+export const MAX_NUM_CLIENT_REQUESTS = 9
+
+// connection ID is valid for 1 min, as per BEP: 15
+export const CONNECTION_ID_VALIDITY_MS = 60 * 1000
+
 export const CONNECT_EVENT = 'connect'
 export const ANNOUNCE_EVENT = 'announce'
 
