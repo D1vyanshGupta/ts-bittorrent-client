@@ -1,7 +1,6 @@
 import { DecodedMetaInfo } from '../../../src/types/index'
 
 export const timeoutMsFixture = 1000
-export const announceMaxNumRequestsFixture = 9
 export const connectionIDValidityMsFixture = 1300
 export const connectionIDMaxNumRequestsFixture = 4
 

@@ -5,7 +5,6 @@ import {
   metaInfoFixture,
   timeoutMsFixture,
   annouceUrlFixture,
-  announceMaxNumRequestsFixture,
   connectionIDValidityMsFixture,
   connectionIDMaxNumRequestsFixture
 } from './fixtures'
@@ -15,6 +14,7 @@ import { MockSocketSendSignature } from './types'
 import {
   CONN_ID_LENGTH,
   CONN_RESP_MIN_LENGTH,
+  MAX_NUM_CLIENT_REQUESTS,
   CONNECTION_ID_VALIDITY_MS
 } from '../../src/constants/protocol'
 
@@ -516,10 +516,7 @@ describe('UDPTrackerClient', () => {
 
       const expectedErrorMsg = getConnectionIDFetchErrorMsg(mockErrorMsg)
       await expect(
-        trackerClient.getPeersForTorrent(
-          metaInfoFixture,
-          announceMaxNumRequestsFixture
-        )
+        trackerClient.getPeersForTorrent(metaInfoFixture)
       ).rejects.toThrow(expectedErrorMsg)
     })
 
@@ -593,14 +590,11 @@ describe('UDPTrackerClient', () => {
         getNotReceiveAnnounceResponseErrorMsg(annouceUrlFixture)
 
       await expect(
-        trackerClient.getPeersForTorrent(
-          metaInfoFixture,
-          announceMaxNumRequestsFixture
-        )
+        trackerClient.getPeersForTorrent(metaInfoFixture)
       ).rejects.toThrow(expectedErrMsg)
 
       expect(socket.listenerCount('message')).toBe(0)
-      expect(socketSendSpy).toHaveBeenCalledTimes(announceMaxNumRequestsFixture)
+      expect(socketSendSpy).toHaveBeenCalledTimes(MAX_NUM_CLIENT_REQUESTS)
 
       const expectedTimeouts = Array.from({
         length: numAnnounceInTimeframe - 1
@@ -685,7 +679,7 @@ describe('UDPTrackerClient', () => {
       const { peers, seeders, leechers } =
         await trackerClient.getPeersForTorrent(
           metaInfoFixture,
-          announceMaxNumRequestsFixture
+          MAX_NUM_CLIENT_REQUESTS
         )
 
       expect(peers.length).toBe(mockPeers.length)

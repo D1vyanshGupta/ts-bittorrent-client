@@ -61,7 +61,7 @@ export class UDPTrackerClient {
         callBack
       )
     } catch (error) {
-      throw Error(getSendUDPDatagramErrorMsg(error.message || error))
+      throw Error(getSendUDPDatagramErrorMsg(error.message))
     }
   }
 
@@ -89,7 +89,7 @@ export class UDPTrackerClient {
               resolve(connectionResponse)
             } catch (error) {
               const parseError = Error(
-                getConnectionResponseParseErrorMsg(error.message || error)
+                getConnectionResponseParseErrorMsg(error.message)
               )
               reject(parseError)
             }
@@ -105,7 +105,7 @@ export class UDPTrackerClient {
         })
       } catch (error) {
         const requestError = Error(
-          getConnectionRequestSendErrorMsg(error.message || error)
+          getConnectionRequestSendErrorMsg(error.message)
         )
         reject(requestError)
       }
@@ -184,7 +184,7 @@ export class UDPTrackerClient {
               resolve(announceResponse)
             } catch (error) {
               const parseError = Error(
-                getAnnounceResponseParseErrorMsg(error.message || error)
+                getAnnounceResponseParseErrorMsg(error.message)
               )
               reject(parseError)
             }
@@ -203,7 +203,7 @@ export class UDPTrackerClient {
         })
       } catch (error) {
         const requestError = Error(
-          getAnnounceRequestSendErrorMsg(error.message || error)
+          getAnnounceRequestSendErrorMsg(error.message)
         )
         reject(requestError)
       }
@@ -219,11 +219,12 @@ export class UDPTrackerClient {
 
     const announceUrl = new URL(metaInfo.announce.toString('utf8'))
 
+    // exponential backoff for fetching peers, as per BEP: 15
     // eslint-disable-next-line no-loops/no-loops
     while (numRequests < maxNumRequests) {
       if (!this.isConnectionIDValid()) {
         await this.getConnectionID(announceUrl).catch((error) => {
-          throw Error(getConnectionIDFetchErrorMsg(error.message || error))
+          throw Error(getConnectionIDFetchErrorMsg(error.message))
         })
 
         // requestIdx resets to zero once connectionID expires
@@ -242,7 +243,7 @@ export class UDPTrackerClient {
 
         return announceResponse
       } catch (error) {
-        logger.error(error.message || error)
+        logger.error(error.message)
       }
 
       requestIdx++
