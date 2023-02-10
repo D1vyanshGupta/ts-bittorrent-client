@@ -1,6 +1,5 @@
 import { join } from 'path'
 import { readFileSync } from 'fs'
-import { createSocket } from 'dgram'
 
 import { decode } from 'bencode'
 
