@@ -1,21 +1,26 @@
+import { Socket } from 'dgram'
 import { randomBytes } from 'crypto'
-import { Socket, createSocket } from 'dgram'
 
 import {
+  peersFixture,
   metaInfoFixture,
-  timeoutMsFixture,
   annouceUrlFixture,
-  connectionIDValidityMsFixture,
-  connectionIDMaxNumRequestsFixture
+  numSeedersFixture,
+  numLeechersFixture,
+  connectionIDFixture,
+  announceResponseFixture,
+  getRequestTimeoutMsMock,
+  requestTimeoutMsFixture,
+  connectionResponseFixture,
+  connectionReceiptTimeFixture,
+  connectionIDValidityMsFixture
 } from './fixtures'
 
-import { MockSocketSendSignature } from './types'
+import { MockSendRequestSignature } from './types'
 
 import {
   CONN_ID_LENGTH,
-  CONN_RESP_MIN_LENGTH,
-  MAX_NUM_CLIENT_REQUESTS,
-  CONNECTION_ID_VALIDITY_MS
+  MAX_NUM_CLIENT_REQUESTS
 } from '../../src/constants/protocol'
 
 import {
@@ -31,44 +36,54 @@ import {
   getNotReceiveAnnounceResponseErrorMsg
 } from '../../src/constants/error-message'
 
+import {
+  DecodedMetaInfo,
+  AnnounceResponse,
+  ConnectionResponse
+} from '../../src/types'
+
 import { UDPTrackerClient } from '../../src/tracker-client'
 import { getRequestTimeoutMs } from '../../src/tracker-client/utils'
-import { AnnounceResponse, ConnectionResponse } from '../../src/types'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const utils = require('../../src/tracker-client/utils')
 
 describe('UDPTrackerClient', () => {
-  let socket: Socket
   let trackerClient: UDPTrackerClient
 
   beforeAll(() => {
-    socket = createSocket('udp4')
-    trackerClient = new UDPTrackerClient(socket)
+    trackerClient = new UDPTrackerClient()
+
+    // override default implementation for tests to run faster
+    jest
+      .spyOn(utils, 'getRequestTimeoutMs')
+      .mockImplementation((requestIdx: number): number =>
+        getRequestTimeoutMsMock(requestIdx)
+      )
   })
 
   afterAll(() => {
-    socket.close()
+    trackerClient.close()
   })
 
   describe('sendConnectionRequest', () => {
-    let socketSendSpy: jest.MockedFunction<MockSocketSendSignature>
+    let clientSocket: Socket
+    let sendUDPDatagramSpy: jest.SpyInstance<void, [URL, Buffer, () => void]>
 
     beforeAll(() => {
-      socketSendSpy = jest.spyOn(
-        socket,
-        'send'
-      ) as unknown as jest.MockedFunction<MockSocketSendSignature>
-    })
+      clientSocket = trackerClient['socket']
 
-    afterEach(() => {
-      jest.restoreAllMocks()
+      sendUDPDatagramSpy = jest.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        trackerClient as any,
+        'sendUDPDatagram'
+      ) as unknown as jest.SpyInstance<void, [URL, Buffer, () => void]>
     })
 
     test('throws error if underlying socket is unable to send UDP datagram', async () => {
       const socketErrorMsg = 'some random socket error'
-      socketSendSpy.mockImplementationOnce(() => {
-        throw Error(socketErrorMsg)
+      sendUDPDatagramSpy.mockImplementationOnce(() => {
+        throw Error(getSendUDPDatagramErrorMsg(socketErrorMsg))
       })
 
       const errMsgSendUDPDatagram = getSendUDPDatagramErrorMsg(socketErrorMsg)
@@ -79,50 +94,37 @@ describe('UDPTrackerClient', () => {
       await expect(
         trackerClient['sendConnectionRequest'](
           annouceUrlFixture,
-          timeoutMsFixture
+          requestTimeoutMsFixture
         )
       ).rejects.toThrow(expectedErrMsg)
 
-      expect(socket.listenerCount('message')).toBe(0)
+      expect(clientSocket.listenerCount('message')).toBe(0)
     })
 
     test('throws error if connection response is not received within stipulated time', async () => {
-      socketSendSpy.mockImplementationOnce(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
+      sendUDPDatagramSpy.mockImplementationOnce(
+        (_announceUrl: URL, _msgBuffer: Buffer, callBack: () => void): void => {
           callBack()
         }
       )
 
-      const expectedErrMsg =
-        getConnectionRequestTimeoutErrorMsg(timeoutMsFixture)
+      const expectedErrMsg = getConnectionRequestTimeoutErrorMsg(
+        requestTimeoutMsFixture
+      )
 
       await expect(
         trackerClient['sendConnectionRequest'](
           annouceUrlFixture,
-          timeoutMsFixture
+          requestTimeoutMsFixture
         )
       ).rejects.toThrow(expectedErrMsg)
 
-      expect(socket.listenerCount('message')).toBe(0)
+      expect(clientSocket.listenerCount('message')).toBe(0)
     })
 
     test('throws error if unable to parse connection response correctly', async () => {
-      socketSendSpy.mockImplementationOnce(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
+      sendUDPDatagramSpy.mockImplementationOnce(
+        (_announceUrl: URL, _msgBuffer: Buffer, callBack: () => void): void => {
           callBack()
         }
       )
@@ -137,175 +139,119 @@ describe('UDPTrackerClient', () => {
       const expectedErrMsg = getConnectionResponseParseErrorMsg(parseErrMsg)
 
       setTimeout(() => {
-        socket.emit('message', Buffer.allocUnsafe(0))
-      }, timeoutMsFixture * Math.random())
+        clientSocket.emit('message', Buffer.allocUnsafe(0))
+      }, requestTimeoutMsFixture * Math.random())
 
       await expect(
         trackerClient['sendConnectionRequest'](
           annouceUrlFixture,
-          timeoutMsFixture
+          requestTimeoutMsFixture
         )
       ).rejects.toThrow(expectedErrMsg)
 
-      expect(socket.listenerCount('message')).toBe(0)
+      expect(clientSocket.listenerCount('message')).toBe(0)
     })
 
     test('returns valid connection response when received within stipulated time', async () => {
-      socketSendSpy.mockImplementationOnce(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
+      sendUDPDatagramSpy.mockImplementationOnce(
+        (_announceUrl: URL, _msgBuffer: Buffer, callBack: () => void): void => {
           callBack()
         }
       )
 
-      const mockReceiptTime = Date.now()
-      const mockConnectionID = randomBytes(CONN_RESP_MIN_LENGTH)
-
-      const mockResponse: ConnectionResponse = {
-        receiptTime: mockReceiptTime,
-        connectionID: mockConnectionID
-      }
-
       jest
         .spyOn(utils, 'parseConnectionResponse')
-        .mockImplementationOnce(() => mockResponse)
+        .mockImplementationOnce(() => connectionResponseFixture)
 
       setTimeout(() => {
-        socket.emit('message', Buffer.allocUnsafe(0))
-      }, timeoutMsFixture / 2)
+        clientSocket.emit('message', Buffer.allocUnsafe(0))
+      }, requestTimeoutMsFixture * Math.random())
 
       const { receiptTime, connectionID } = await trackerClient[
         'sendConnectionRequest'
-      ](annouceUrlFixture, timeoutMsFixture)
+      ](annouceUrlFixture, requestTimeoutMsFixture)
 
-      expect(receiptTime).toBe(mockReceiptTime)
+      expect(receiptTime).toBe(connectionReceiptTimeFixture)
 
-      const isSame = Buffer.compare(connectionID, mockConnectionID) === 0
+      const isSame = Buffer.compare(connectionID, connectionIDFixture) === 0
       expect(isSame).toBe(true)
 
-      expect(socket.listenerCount('message')).toBe(0)
+      expect(clientSocket.listenerCount('message')).toBe(0)
     })
   })
 
   describe('getConnectionID', () => {
-    let socketSendSpy: jest.MockedFunction<MockSocketSendSignature>
+    let sendConnectionRequestSpy: jest.MockedFunction<
+      MockSendRequestSignature<URL, ConnectionResponse>
+    >
 
     beforeAll(() => {
-      jest
-        .spyOn(utils, 'getRequestTimeoutMs')
-        .mockImplementation(
-          (requestIdx: number): number => 100 * 2 ** requestIdx
-        )
-
-      socketSendSpy = jest.spyOn(
-        socket,
-        'send'
-      ) as unknown as jest.MockedFunction<MockSocketSendSignature>
+      sendConnectionRequestSpy = jest.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        trackerClient as any,
+        'sendConnectionRequest'
+      ) as unknown as jest.MockedFunction<
+        MockSendRequestSignature<URL, ConnectionResponse>
+      >
     })
 
-    afterAll(() => {
-      jest.restoreAllMocks()
+    afterEach(() => {
+      sendConnectionRequestSpy.mockClear()
     })
 
     test('implements exponential backoff (as per BEP: 15)', async () => {
-      const requestTimestamps: number[] = []
-
-      socketSendSpy.mockImplementation(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
-          // record the timestamp when connection request is being sent
-          requestTimestamps.push(Date.now())
-
-          callBack()
+      /*
+      mock sendConnectionRequest to throw timeoutErrors to test whether
+      successive requests are being sent with an exponential backoff or not
+      */
+      sendConnectionRequestSpy.mockImplementation(
+        (_: URL, timeoutMs: number): Promise<ConnectionResponse> => {
+          return new Promise((_, reject) => {
+            setTimeout(() => {
+              const timeoutError =
+                getConnectionRequestTimeoutErrorMsg(timeoutMs)
+              reject(timeoutError)
+            }, timeoutMs)
+          })
         }
       )
 
       const expectedErrMsg =
         getNotReceiveConnectionIDErrorMsg(annouceUrlFixture)
       await expect(
-        trackerClient['getConnectionID'](
-          annouceUrlFixture,
-          connectionIDMaxNumRequestsFixture
-        )
+        trackerClient['getConnectionID'](annouceUrlFixture)
       ).rejects.toThrow(expectedErrMsg)
 
-      expect(socket.listenerCount('message')).toBe(0)
-
-      expect(socketSendSpy).toHaveBeenCalledTimes(
-        connectionIDMaxNumRequestsFixture
+      expect(sendConnectionRequestSpy).toHaveBeenCalledTimes(
+        MAX_NUM_CLIENT_REQUESTS
       )
 
-      const expectedTimeouts = Array.from({
-        length: connectionIDMaxNumRequestsFixture - 1
-      }).map((_, idx) => getRequestTimeoutMs(idx))
-
-      const actualTimeouts = requestTimestamps
-        .slice(1)
-        .map((timestamp, idx) => timestamp - requestTimestamps[idx])
+      // array of timeout(Ms) values with whom the (spy)method was invoked
+      const timeouts = sendConnectionRequestSpy.mock.calls.map(
+        (args: [URL, number]) => args[1]
+      )
 
       /*
-      timeout interval for `setTimeout` only provides a lower bound for the time
-      interval after which the callback is invoked.
-
-      therefore, expected timeout <= actualTimeout
+      (spy)method was invoked with the correct series of
+      exponenitally increasing timeout values
       */
-
-      const expectedLTEActual = actualTimeouts.reduce(
-        (prev, cur, idx) => prev && expectedTimeouts[idx] <= cur,
+      const areTimeoutsValid = timeouts.reduce(
+        (acc: boolean, cur: number, idx: number): boolean =>
+          acc && cur === getRequestTimeoutMs(idx),
         true
       )
-      expect(expectedLTEActual).toBe(true)
-
-      /*
-      actual timeout intervals should be monotonically increasing
-      */
-
-      const isMonotonic = actualTimeouts.reduce(
-        (prev, cur, idx, arr) => prev && (idx === 0 || arr[idx - 1] < cur),
-        true
-      )
-
-      expect(isMonotonic).toBe(true)
+      expect(areTimeoutsValid).toBe(true)
     })
 
     test('correctly sets internal state when connection response is received', async () => {
-      setTimeout(() => {
-        socket.emit('message', Buffer.allocUnsafe(0))
-      }, timeoutMsFixture)
-
-      const mockReceiptTime: number = Date.now()
-      const mockConnectionID: Buffer = randomBytes(CONN_ID_LENGTH)
-      const mockResponse: ConnectionResponse = {
-        receiptTime: mockReceiptTime,
-        connectionID: mockConnectionID
-      }
-
-      jest
-        .spyOn(utils, 'parseConnectionResponse')
-        .mockImplementationOnce(() => mockResponse)
-
-      socketSendSpy.mockImplementationOnce(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
-          callBack()
+      // mock sendConnectionRequest to provide mockResponse on the first request
+      sendConnectionRequestSpy.mockImplementationOnce(
+        (_: URL, timeoutMs: number): Promise<ConnectionResponse> => {
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(connectionResponseFixture)
+            }, timeoutMs * Math.random())
+          })
         }
       )
 
@@ -313,65 +259,39 @@ describe('UDPTrackerClient', () => {
         trackerClient['getConnectionID'](annouceUrlFixture)
       ).resolves.not.toThrow()
 
-      expect(socket.listenerCount('message')).toBe(0)
+      expect(sendConnectionRequestSpy).toHaveBeenCalledTimes(1)
 
-      expect(trackerClient['connectionReceiptTime']).toBe(mockReceiptTime)
+      expect(trackerClient['connectionReceiptTime']).toBe(
+        connectionReceiptTimeFixture
+      )
 
       const isSame =
-        Buffer.compare(trackerClient['connectionID'], mockConnectionID) === 0
+        Buffer.compare(trackerClient['connectionID'], connectionIDFixture) === 0
       expect(isSame).toBe(true)
     })
   })
 
-  describe('isConnectionIDValid', () => {
-    beforeEach(() => {
-      // reset connectionID related state for tracker client
-      trackerClient['connectionID'] = undefined
-      trackerClient['connectionReceiptTime'] = undefined
-    })
-
-    test('returns false if trackerClient has no connectionID', () => {
-      expect(trackerClient['isConnectionIDValid']()).toBe(false)
-    })
-
-    test('returns false if connectionID has expired', () => {
-      trackerClient['connectionID'] = randomBytes(CONN_ID_LENGTH)
-      trackerClient['connectionReceiptTime'] =
-        Date.now() - CONNECTION_ID_VALIDITY_MS
-
-      expect(trackerClient['isConnectionIDValid']()).toBe(false)
-    })
-
-    test('returns true if connectionID is valid', () => {
-      trackerClient['connectionID'] = randomBytes(CONN_ID_LENGTH)
-      trackerClient['connectionReceiptTime'] =
-        Date.now() - CONNECTION_ID_VALIDITY_MS / 2
-
-      expect(trackerClient['isConnectionIDValid']()).toBe(true)
-    })
-  })
-
   describe('sendAnnounceRequest', () => {
-    let socketSendSpy: jest.MockedFunction<MockSocketSendSignature>
+    let clientSocket: Socket
+    let sendUDPDatagramSpy: jest.SpyInstance<void, [URL, Buffer, () => void]>
 
     beforeAll(() => {
-      // set connectionID for trackerClient
-      trackerClient['connectionID'] = randomBytes(CONN_ID_LENGTH)
+      clientSocket = trackerClient['socket']
 
-      socketSendSpy = jest.spyOn(
-        socket,
-        'send'
-      ) as unknown as jest.MockedFunction<MockSocketSendSignature>
-    })
+      // set connection (details) for trackerClient
+      trackerClient.setConnection(randomBytes(CONN_ID_LENGTH), Date.now())
 
-    afterEach(() => {
-      jest.restoreAllMocks()
+      sendUDPDatagramSpy = jest.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        trackerClient as any,
+        'sendUDPDatagram'
+      ) as unknown as jest.SpyInstance<void, [URL, Buffer, () => void]>
     })
 
     test('throws error if underlying socket is unable to send UDP datagram', async () => {
       const socketErrorMsg = 'some random socket error'
-      socketSendSpy.mockImplementationOnce(() => {
-        throw Error(socketErrorMsg)
+      sendUDPDatagramSpy.mockImplementationOnce(() => {
+        throw Error(getSendUDPDatagramErrorMsg(socketErrorMsg))
       })
 
       const errMsgSendUDPDatagram = getSendUDPDatagramErrorMsg(socketErrorMsg)
@@ -380,45 +300,39 @@ describe('UDPTrackerClient', () => {
       )
 
       await expect(
-        trackerClient['sendAnnounceRequest'](metaInfoFixture, timeoutMsFixture)
+        trackerClient['sendAnnounceRequest'](
+          metaInfoFixture,
+          requestTimeoutMsFixture
+        )
       ).rejects.toThrow(expectedErrMsg)
 
-      expect(socket.listenerCount('message')).toBe(0)
+      expect(clientSocket.listenerCount('message')).toBe(0)
     })
 
     test('throws error if announce response is not received within stipulated time', async () => {
-      socketSendSpy.mockImplementationOnce(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
+      sendUDPDatagramSpy.mockImplementationOnce(
+        (_announceUrl: URL, _msgBuffer: Buffer, callBack: () => void): void => {
           callBack()
         }
       )
 
-      const expectedErrMsg = getAnnounceRequestTimeoutErrorMsg(timeoutMsFixture)
+      const expectedErrMsg = getAnnounceRequestTimeoutErrorMsg(
+        requestTimeoutMsFixture
+      )
 
       await expect(
-        trackerClient['sendAnnounceRequest'](metaInfoFixture, timeoutMsFixture)
+        trackerClient['sendAnnounceRequest'](
+          metaInfoFixture,
+          requestTimeoutMsFixture
+        )
       ).rejects.toThrow(expectedErrMsg)
 
-      expect(socket.listenerCount('message')).toBe(0)
+      expect(clientSocket.listenerCount('message')).toBe(0)
     })
 
     test('throws error if unable to parse announce response correctly', async () => {
-      socketSendSpy.mockImplementationOnce(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
+      sendUDPDatagramSpy.mockImplementationOnce(
+        (_announceUrl: URL, _msgBuffer: Buffer, callBack: () => void): void => {
           callBack()
         }
       )
@@ -431,56 +345,42 @@ describe('UDPTrackerClient', () => {
       const expectedErrMsg = getAnnounceResponseParseErrorMsg(parseErrMsg)
 
       setTimeout(() => {
-        socket.emit('message', Buffer.allocUnsafe(0))
-      }, timeoutMsFixture * Math.random())
+        clientSocket.emit('message', Buffer.allocUnsafe(0))
+      }, requestTimeoutMsFixture * Math.random())
 
       await expect(
-        trackerClient['sendAnnounceRequest'](metaInfoFixture, timeoutMsFixture)
+        trackerClient['sendAnnounceRequest'](
+          metaInfoFixture,
+          requestTimeoutMsFixture
+        )
       ).rejects.toThrow(expectedErrMsg)
 
-      expect(socket.listenerCount('message')).toBe(0)
+      expect(clientSocket.listenerCount('message')).toBe(0)
     })
 
     test('returns valid announce response when received within stipulated time', async () => {
-      socketSendSpy.mockImplementationOnce(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
+      sendUDPDatagramSpy.mockImplementationOnce(
+        (_announceUrl: URL, _msgBuffer: Buffer, callBack: () => void): void => {
           callBack()
         }
       )
 
-      const mockPeers = [{ ip: Buffer.allocUnsafe(0), port: 0 }]
-      const mockNumSeeders = Math.random()
-      const mockNumLeechers = Math.random()
-
-      const mockResponse: AnnounceResponse = {
-        peers: mockPeers,
-        seeders: mockNumSeeders,
-        leechers: mockNumLeechers
-      }
-
       jest
         .spyOn(utils, 'parseAnnounceResponse')
-        .mockImplementationOnce(() => mockResponse)
+        .mockImplementationOnce(() => announceResponseFixture)
 
       setTimeout(() => {
-        socket.emit('message', Buffer.allocUnsafe(0))
-      }, timeoutMsFixture / 2)
+        clientSocket.emit('message', Buffer.allocUnsafe(0))
+      }, requestTimeoutMsFixture * Math.random())
 
       const { peers, seeders, leechers } = await trackerClient[
         'sendAnnounceRequest'
-      ](metaInfoFixture, timeoutMsFixture)
+      ](metaInfoFixture, requestTimeoutMsFixture)
 
-      expect(peers.length).toBe(mockPeers.length)
+      expect(peers.length).toBe(peersFixture.length)
       peers.forEach((peer, idx) => {
         const { ip, port } = peer
-        const { ip: mockIp, port: mockPort } = mockPeers[idx]
+        const { ip: mockIp, port: mockPort } = peersFixture[idx]
 
         const isSame = Buffer.compare(ip, mockIp) === 0
         expect(isSame).toBe(true)
@@ -488,31 +388,59 @@ describe('UDPTrackerClient', () => {
         expect(port).toBe(mockPort)
       })
 
-      expect(seeders).toBe(mockNumSeeders)
-      expect(leechers).toBe(mockNumLeechers)
+      expect(seeders).toBe(numSeedersFixture)
+      expect(leechers).toBe(numLeechersFixture)
     })
   })
 
   describe('getPeersForTorrent', () => {
+    let getConnectionIDSpy: jest.MockedFunction<() => Promise<void>>
+    let sendAccounceRequestSpy: jest.MockedFunction<
+      MockSendRequestSignature<DecodedMetaInfo, AnnounceResponse>
+    >
+
+    beforeAll(() => {
+      jest
+        .spyOn(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          trackerClient as any,
+          'isConnectionIDValid'
+        )
+        .mockImplementation(() => {
+          if (!trackerClient['connectionID']) return false
+
+          const diffMs = Date.now() - trackerClient['connectionReceiptTime']
+          return diffMs < connectionIDValidityMsFixture
+        })
+
+      getConnectionIDSpy = jest.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        trackerClient as any,
+        'getConnectionID'
+      ) as unknown as jest.MockedFunction<() => Promise<void>>
+
+      sendAccounceRequestSpy = jest.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        trackerClient as any,
+        'sendAnnounceRequest'
+      ) as unknown as jest.MockedFunction<
+        MockSendRequestSignature<DecodedMetaInfo, AnnounceResponse>
+      >
+    })
+
     beforeEach(() => {
-      // reset connectionID related state for tracker client
-      trackerClient['connectionID'] = undefined
-      trackerClient['connectionReceiptTime'] = undefined
+      trackerClient.resetConnection()
     })
 
     afterEach(() => {
-      jest.restoreAllMocks()
+      sendAccounceRequestSpy && sendAccounceRequestSpy.mockClear()
     })
 
     test('throws error if unable to get connectionID', async () => {
       const mockErrorMsg = 'unable to fetch connectionID'
-
-      jest
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .spyOn(trackerClient as any, 'getConnectionID')
-        .mockImplementationOnce(() => {
-          return Promise.reject(Error(mockErrorMsg))
-        })
+      getConnectionIDSpy.mockImplementationOnce(() => {
+        return Promise.reject(Error(mockErrorMsg))
+      })
 
       const expectedErrorMsg = getConnectionIDFetchErrorMsg(mockErrorMsg)
       await expect(
@@ -521,68 +449,24 @@ describe('UDPTrackerClient', () => {
     })
 
     test('implements exponential backoff (as per BEP: 15) within the timeframe of connectionID being valid', async () => {
-      jest
-        .spyOn(utils, 'getRequestTimeoutMs')
-        .mockImplementation(
-          (requestIdx: number): number => 100 * 2 ** requestIdx
-        )
-
-      jest
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .spyOn(trackerClient as any, 'isConnectionIDValid')
-        .mockImplementation(() => {
-          if (!trackerClient['connectionID']) return false
-
-          const diffMs = Date.now() - trackerClient['connectionReceiptTime']
-          return diffMs < connectionIDValidityMsFixture
-        })
-
-      const numAnnounceInTimeframe = Math.floor(
-        Math.log2(connectionIDValidityMsFixture / 100 + 1) + 1
-      )
+      getConnectionIDSpy.mockImplementation((): Promise<void> => {
+        trackerClient.setConnection(randomBytes(CONN_ID_LENGTH), Date.now())
+        return Promise.resolve()
+      })
 
       /*
-      when connectionID expires, requestIdx for exponential backoff resets to 0,
-      each expiry event has corresponding list of announce request timestamps
+      mock sendAccounceRequest to throw timeoutErrors to test whether
+      successive requests are being sent with an exponential backoff or not
       */
-      let requestTimestamps: number[]
-      const requestTimestampsList: number[][] = []
-
-      jest
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .spyOn(trackerClient as any, 'getConnectionID')
-        .mockImplementation(() => {
-          trackerClient['connectionID'] = randomBytes(CONN_ID_LENGTH)
-          trackerClient['connectionReceiptTime'] = Date.now()
-
-          /*
-          reset when new connectionID is being obtained,
-          i.e. previous connectionID expired
-          */
-          requestTimestamps = []
-          requestTimestampsList.push(requestTimestamps)
-
-          return Promise.resolve()
-        })
-
-      const socketSendSpy = jest.spyOn(
-        socket,
-        'send'
-      ) as unknown as jest.MockedFunction<MockSocketSendSignature>
-
-      socketSendSpy.mockImplementation(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
-          // record the timestamp when announce request is being sent
-          requestTimestamps.push(Date.now())
-
-          callBack()
+      sendAccounceRequestSpy.mockImplementation(
+        (_: DecodedMetaInfo, timeoutMs: number): Promise<AnnounceResponse> => {
+          return new Promise((_, reject) => {
+            setTimeout(() => {
+              const timeoutError =
+                getNotReceiveConnectionIDErrorMsg(annouceUrlFixture)
+              reject(timeoutError)
+            }, timeoutMs)
+          })
         }
       )
 
@@ -593,99 +477,64 @@ describe('UDPTrackerClient', () => {
         trackerClient.getPeersForTorrent(metaInfoFixture)
       ).rejects.toThrow(expectedErrMsg)
 
-      expect(socket.listenerCount('message')).toBe(0)
-      expect(socketSendSpy).toHaveBeenCalledTimes(MAX_NUM_CLIENT_REQUESTS)
+      expect(sendAccounceRequestSpy).toHaveBeenCalledTimes(
+        MAX_NUM_CLIENT_REQUESTS
+      )
 
-      const expectedTimeouts = Array.from({
-        length: numAnnounceInTimeframe - 1
-      }).map((_, idx) => getRequestTimeoutMs(idx))
+      // array of timeout(Ms) values with whom the (spy)method was invoked
+      const timeouts = sendAccounceRequestSpy.mock.calls.map(
+        (args: [DecodedMetaInfo, number]) => args[1]
+      )
 
-      requestTimestampsList.forEach((requestTimestamps) => {
-        const actualTimeouts = requestTimestamps
-          .slice(1)
-          .map((timestamp, idx) => timestamp - requestTimestamps[idx])
+      /*
+      (spy)method was invoked with the correct series of exponenitally
+      increasing timeout values, within connectionID validity timeframe.
+      */
 
-        /*
-        timeout interval for `setTimeout` only provides a lower bound for the time
-        interval after which the callback is invoked.
-
-        therefore, expected timeout <= actualTimeout
-        */
-        const expectedLTEActual = actualTimeouts.reduce(
-          (prev, cur, idx) => prev && expectedTimeouts[idx] <= cur,
-          true
-        )
-        expect(expectedLTEActual).toBe(true)
-
-        /*
-        actual timeout intervals should be monotonically increasing
-        */
-
-        const isMonotonic = actualTimeouts.reduce(
-          (prev, cur, idx, arr) => prev && (idx === 0 || arr[idx - 1] < cur),
-          true
-        )
-
-        expect(isMonotonic).toBe(true)
-      })
+      // counter to keep track of when subsequence changes monotonicity
+      let ctr = 0
+      const boolArray = timeouts.map(
+        (cur: number, idx: number, arr: number[]): boolean => {
+          if (idx === 0) return true
+          if (arr[idx - 1] < cur) ctr++
+          else ctr = 0
+          return cur === getRequestTimeoutMs(ctr)
+        }
+      )
+      const areTimeoutsValid = boolArray.reduce(
+        (prev: boolean, cur: boolean): boolean => prev && cur,
+        true
+      )
+      expect(areTimeoutsValid).toBe(true)
     })
 
-    test('returns valid announce response when received within stipulated time', async () => {
-      const socketSendSpy = jest.spyOn(
-        socket,
-        'send'
-      ) as unknown as jest.MockedFunction<MockSocketSendSignature>
+    test('returns peer information if announce response received within stipulated time', async () => {
+      getConnectionIDSpy.mockImplementation((): Promise<void> => {
+        trackerClient.setConnection(randomBytes(CONN_ID_LENGTH), Date.now())
+        return Promise.resolve()
+      })
 
-      socketSendSpy.mockImplementation(
-        (
-          _msg: Buffer,
-          _offset: number,
-          _length: number,
-          _port: number,
-          _address: string,
-          callBack: () => void
-        ): void => {
-          callBack()
+      // mock sendAccounceRequestSpy to provide mockResponse on the first request
+      sendAccounceRequestSpy.mockImplementationOnce(
+        (_: DecodedMetaInfo, timeoutMs: number): Promise<AnnounceResponse> => {
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(announceResponseFixture)
+            }, timeoutMs * Math.random())
+          })
         }
       )
 
-      jest
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .spyOn(trackerClient as any, 'getConnectionID')
-        .mockImplementation(() => {
-          trackerClient['connectionID'] = randomBytes(CONN_ID_LENGTH)
-          trackerClient['connectionReceiptTime'] = Date.now()
+      const { peers, seeders, leechers } = await trackerClient[
+        'getPeersForTorrent'
+      ](metaInfoFixture)
 
-          return Promise.resolve()
-        })
+      expect(sendAccounceRequestSpy).toHaveBeenCalledTimes(1)
 
-      const mockPeers = [{ ip: Buffer.allocUnsafe(0), port: 0 }]
-      const mockNumSeeders = Math.random()
-      const mockNumLeechers = Math.random()
-
-      const mockResponse: AnnounceResponse = {
-        peers: mockPeers,
-        seeders: mockNumSeeders,
-        leechers: mockNumLeechers
-      }
-      jest
-        .spyOn(utils, 'parseAnnounceResponse')
-        .mockImplementationOnce(() => mockResponse)
-
-      setTimeout(() => {
-        socket.emit('message', Buffer.allocUnsafe(0))
-      }, timeoutMsFixture / 2)
-
-      const { peers, seeders, leechers } =
-        await trackerClient.getPeersForTorrent(
-          metaInfoFixture,
-          MAX_NUM_CLIENT_REQUESTS
-        )
-
-      expect(peers.length).toBe(mockPeers.length)
+      expect(peers.length).toBe(peersFixture.length)
       peers.forEach((peer, idx) => {
         const { ip, port } = peer
-        const { ip: mockIp, port: mockPort } = mockPeers[idx]
+        const { ip: mockIp, port: mockPort } = peersFixture[idx]
 
         const isSame = Buffer.compare(ip, mockIp) === 0
         expect(isSame).toBe(true)
@@ -693,8 +542,8 @@ describe('UDPTrackerClient', () => {
         expect(port).toBe(mockPort)
       })
 
-      expect(seeders).toBe(mockNumSeeders)
-      expect(leechers).toBe(mockNumLeechers)
+      expect(seeders).toBe(numSeedersFixture)
+      expect(leechers).toBe(numLeechersFixture)
     })
   })
 })

@@ -1,5 +1,5 @@
-import { Socket } from 'dgram'
 import { randomBytes } from 'crypto'
+import { Socket, createSocket } from 'dgram'
 
 import {
   getRequestTimeoutMs,
@@ -39,11 +39,25 @@ export class UDPTrackerClient {
   private connectionID: Buffer
   private connectionReceiptTime: number
 
-  constructor(socket: Socket, socketPort = DEFAULT_SOCKET_PORT) {
-    this.socket = socket
+  constructor(socketPort = DEFAULT_SOCKET_PORT) {
+    this.socket = createSocket('udp4')
     this.socketPort = socketPort
 
     this.socket.bind(this.socketPort)
+  }
+
+  setConnection(connectionID: Buffer, connectionReceiptTime: number) {
+    this.connectionID = connectionID
+    this.connectionReceiptTime = connectionReceiptTime
+  }
+
+  resetConnection(): void {
+    this.connectionID = undefined
+    this.connectionReceiptTime = undefined
+  }
+
+  close(): void {
+    this.socket.close()
   }
 
   private sendUDPDatagram(
@@ -112,15 +126,12 @@ export class UDPTrackerClient {
     })
   }
 
-  private async getConnectionID(
-    announceUrl: URL,
-    maxNumRequests = MAX_NUM_CLIENT_REQUESTS
-  ): Promise<void> {
+  private async getConnectionID(announceUrl: URL): Promise<void> {
     let requestIdx = 0
 
     // exponential backoff for fetching connection ID, as per BEP: 15
     // eslint-disable-next-line no-loops/no-loops
-    while (requestIdx < maxNumRequests) {
+    while (requestIdx < MAX_NUM_CLIENT_REQUESTS) {
       const timeoutMs = getRequestTimeoutMs(requestIdx)
       try {
         const { connectionID, receiptTime } = await this.sendConnectionRequest(
@@ -128,8 +139,7 @@ export class UDPTrackerClient {
           timeoutMs
         )
 
-        this.connectionID = connectionID
-        this.connectionReceiptTime = receiptTime
+        this.setConnection(connectionID, receiptTime)
 
         logger.info(
           `received connection ID at ${new Date(receiptTime).toISOString()}`
@@ -142,7 +152,7 @@ export class UDPTrackerClient {
       requestIdx++
     }
 
-    if (requestIdx === maxNumRequests)
+    if (requestIdx === MAX_NUM_CLIENT_REQUESTS)
       throw Error(getNotReceiveConnectionIDErrorMsg(announceUrl))
   }
 
@@ -211,17 +221,16 @@ export class UDPTrackerClient {
   }
 
   async getPeersForTorrent(
-    metaInfo: DecodedMetaInfo,
-    maxNumRequests = MAX_NUM_CLIENT_REQUESTS
+    metaInfo: DecodedMetaInfo
   ): Promise<AnnounceResponse> {
     let requestIdx = 0
     let numRequests = 0
 
     const announceUrl = new URL(metaInfo.announce.toString('utf8'))
 
-    // exponential backoff for fetching peers, as per BEP: 15
+    // exponential backoff, as per BEP: 15
     // eslint-disable-next-line no-loops/no-loops
-    while (numRequests < maxNumRequests) {
+    while (numRequests < MAX_NUM_CLIENT_REQUESTS) {
       if (!this.isConnectionIDValid()) {
         await this.getConnectionID(announceUrl).catch((error) => {
           throw Error(getConnectionIDFetchErrorMsg(error.message))

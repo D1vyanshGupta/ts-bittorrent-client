@@ -21,7 +21,7 @@ function parseMetaInfoFromFile(): DecodedMetaInfo {
   return decodedMetaInfo
 }
 
-const trackerClient = new UDPTrackerClient(createSocket('udp4'))
+const trackerClient = new UDPTrackerClient()
 const metaInfo = parseMetaInfoFromFile()
 trackerClient
   .getPeersForTorrent(metaInfo)

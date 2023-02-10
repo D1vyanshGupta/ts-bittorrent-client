@@ -1,8 +1,4 @@
-export type MockSocketSendSignature = (
-  msg: Buffer,
-  offset: number,
-  length: number,
-  port: number,
-  address: string,
-  callBack: () => void
-) => void
+export type MockSendRequestSignature<T, V> = (
+  requestMeta: T,
+  timeoutMs: number
+) => Promise<V>
