@@ -29,11 +29,11 @@ import {
   getAnnounceRequestSendErrorMsg,
   getAnnounceResponseParseErrorMsg,
   getConnectionRequestSendErrorMsg,
-  getNotReceiveConnectionIDErrorMsg,
   getAnnounceRequestTimeoutErrorMsg,
   getConnectionResponseParseErrorMsg,
   getConnectionRequestTimeoutErrorMsg,
-  getNotReceiveAnnounceResponseErrorMsg
+  getUnableObtainConnectionIDErrorMsg,
+  getUnableReceiveAnnounceResponseErrorMsg
 } from '../../src/constants/error-message'
 
 import {
@@ -217,7 +217,7 @@ describe('TrackerClient', () => {
       )
 
       const expectedErrMsg =
-        getNotReceiveConnectionIDErrorMsg(annouceUrlFixture)
+        getUnableObtainConnectionIDErrorMsg(annouceUrlFixture)
       await expect(
         trackerClient['getConnectionID'](annouceUrlFixture)
       ).rejects.toThrow(expectedErrMsg)
@@ -463,7 +463,7 @@ describe('TrackerClient', () => {
           return new Promise((_, reject) => {
             setTimeout(() => {
               const timeoutError =
-                getNotReceiveConnectionIDErrorMsg(annouceUrlFixture)
+                getUnableObtainConnectionIDErrorMsg(annouceUrlFixture)
               reject(timeoutError)
             }, timeoutMs)
           })
@@ -471,7 +471,7 @@ describe('TrackerClient', () => {
       )
 
       const expectedErrMsg =
-        getNotReceiveAnnounceResponseErrorMsg(annouceUrlFixture)
+        getUnableReceiveAnnounceResponseErrorMsg(annouceUrlFixture)
 
       await expect(
         trackerClient.getPeersForTorrent(metaInfoFixture)

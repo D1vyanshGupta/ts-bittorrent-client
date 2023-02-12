@@ -29,8 +29,8 @@ export function getConnectionResponseParseErrorMsg(error: string): string {
   return `invalid connection response: ${error}`
 }
 
-export function getNotReceiveConnectionIDErrorMsg(announceUrl: URL): string {
-  return `unable to receive connection ID from ${announceUrl}`
+export function getUnableObtainConnectionIDErrorMsg(announceUrl: URL): string {
+  return `unable to obtain connection ID from ${announceUrl}`
 }
 
 export function getAnnounceRequestSendErrorMsg(error: string): string {
@@ -51,7 +51,7 @@ export function getConnectionIDFetchErrorMsg(error: string): string {
   return `cannot send announce request because unable to get connection ID: ${error}`
 }
 
-export function getNotReceiveAnnounceResponseErrorMsg(
+export function getUnableReceiveAnnounceResponseErrorMsg(
   announceUrl: URL
 ): string {
   return `uanble to receive announce response from ${announceUrl}`
