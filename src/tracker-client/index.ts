@@ -22,11 +22,11 @@ import {
   getAnnounceRequestSendErrorMsg,
   getAnnounceResponseParseErrorMsg,
   getConnectionRequestSendErrorMsg,
-  getNotReceiveConnectionIDErrorMsg,
   getAnnounceRequestTimeoutErrorMsg,
   getConnectionResponseParseErrorMsg,
   getConnectionRequestTimeoutErrorMsg,
-  getNotReceiveAnnounceResponseErrorMsg
+  getUnableObtainConnectionIDErrorMsg,
+  getUnableReceiveAnnounceResponseErrorMsg
 } from '../constants/error-message'
 
 import { logger } from '../logging'
@@ -153,7 +153,7 @@ export class TrackerClient {
     }
 
     if (requestIdx === MAX_NUM_CLIENT_REQUESTS)
-      throw Error(getNotReceiveConnectionIDErrorMsg(announceUrl))
+      throw Error(getUnableObtainConnectionIDErrorMsg(announceUrl))
   }
 
   private isConnectionIDValid(): boolean {
@@ -259,6 +259,6 @@ export class TrackerClient {
       numRequests++
     }
 
-    throw Error(getNotReceiveAnnounceResponseErrorMsg(announceUrl))
+    throw Error(getUnableReceiveAnnounceResponseErrorMsg(announceUrl))
   }
 }

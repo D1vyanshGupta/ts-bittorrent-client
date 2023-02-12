@@ -8,10 +8,8 @@ import { logger, logMetaInfo } from './logging'
 import { TrackerClient } from './tracker-client'
 import { parseMetaInfoToReadable } from './meta-info'
 
-const FILE_NAME = 'XigmaNAS.torrent'
-
-function parseMetaInfoFromFile(): DecodedMetaInfo {
-  const filePath = join(process.cwd(), FILE_NAME)
+function parseMetaInfoFromFile(fileName: string): DecodedMetaInfo {
+  const filePath = join(process.cwd(), fileName)
   const decodedMetaInfo = decode(readFileSync(filePath))
 
   const readableMetaInfo = parseMetaInfoToReadable(decodedMetaInfo)
@@ -20,20 +18,27 @@ function parseMetaInfoFromFile(): DecodedMetaInfo {
   return decodedMetaInfo
 }
 
-const trackerClient = new TrackerClient()
-const metaInfo = parseMetaInfoFromFile()
-trackerClient
-  .getPeersForTorrent(metaInfo)
-  .then((response) => {
-    response.peers.forEach((peer, idx) => {
-      logger.info(
-        `Peer ${idx + 1} => ip: ${peer.ip.toString('hex')}, port: ${peer.port}`
-      )
+function main(): void {
+  const trackerClient = new TrackerClient()
+  const metaInfo = parseMetaInfoFromFile(process.argv[2])
 
-      logger.info(`#seeders: ${response.seeders}`)
-      logger.info(`#leechers: ${response.leechers}`)
+  trackerClient
+    .getPeersForTorrent(metaInfo)
+    .then((response) => {
+      response.peers.forEach((peer, idx) => {
+        logger.info(
+          `Peer ${idx + 1} => ip: ${peer.ip.toString('hex')}, port: ${
+            peer.port
+          }`
+        )
+
+        logger.info(`#seeders: ${response.seeders}`)
+        logger.info(`#leechers: ${response.leechers}`)
+      })
     })
-  })
-  .catch((error) => {
-    logger.error(error.message)
-  })
+    .catch((error) => {
+      logger.error(error.message)
+    })
+}
+
+main()

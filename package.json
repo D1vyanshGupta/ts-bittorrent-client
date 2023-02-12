@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
+    "dev": "nodemon './src/index.ts' --watch './src'",
     "lint:fix": "eslint . --ext .ts --fix",
     "lint": "eslint . --ext .ts",
     "prepare": "husky install",
