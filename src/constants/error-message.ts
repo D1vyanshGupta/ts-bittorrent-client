@@ -30,7 +30,7 @@ export function getConnectionResponseParseErrorMsg(error: string): string {
 }
 
 export function getUnableObtainConnectionIDErrorMsg(announceUrl: URL): string {
-  return `unable to obtain connection ID from ${announceUrl}`
+  return `unable to obtain connection response from ${announceUrl}`
 }
 
 export function getAnnounceRequestSendErrorMsg(error: string): string {
@@ -54,5 +54,5 @@ export function getConnectionIDFetchErrorMsg(error: string): string {
 export function getUnableReceiveAnnounceResponseErrorMsg(
   announceUrl: URL
 ): string {
-  return `uanble to receive announce response from ${announceUrl}`
+  return `unable to receive announce response from ${announceUrl}`
 }

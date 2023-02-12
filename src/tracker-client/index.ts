@@ -6,6 +6,7 @@ import {
   buildAnnounceRequest,
   parseAnnounceResponse,
   buildConnectionRequest,
+  buildAnnounceRequestUrl,
   parseConnectionResponse
 } from './utils'
 
@@ -70,7 +71,7 @@ export class TrackerClient {
         msgBuffer,
         0,
         msgBuffer.length,
-        +announceUrl.port,
+        +announceUrl.port || DEFAULT_SOCKET_PORT,
         announceUrl.hostname,
         callBack
       )
@@ -142,7 +143,9 @@ export class TrackerClient {
         this.setConnection(connectionID, receiptTime)
 
         logger.info(
-          `received connection ID at ${new Date(receiptTime).toISOString()}`
+          `received connection response at ${new Date(
+            receiptTime
+          ).toISOString()}`
         )
         break
       } catch (error) {
@@ -225,6 +228,11 @@ export class TrackerClient {
   ): Promise<AnnounceResponse> {
     let requestIdx = 0
     let numRequests = 0
+
+    const url = buildAnnounceRequestUrl(this.socketPort, metaInfo)
+    logger.info('----------------')
+    logger.info(url.toString())
+    logger.info('----------------')
 
     const announceUrl = new URL(metaInfo.announce.toString('utf8'))
 

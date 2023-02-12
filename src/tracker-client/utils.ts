@@ -168,6 +168,49 @@ export function buildAnnounceRequest(
   return buffer
 }
 
+export function buildAnnounceRequestUrl(
+  socketPort: number,
+  metaInfo: DecodedMetaInfo
+): URL {
+  const { announce } = metaInfo
+  const announceUrl = new URL(announce.toString('utf8'))
+
+  // append info_hash
+  const infoHash = getInfoHash(metaInfo)
+  announceUrl.searchParams.append(
+    'info_hash',
+    encodeURIComponent(infoHash.toString('base64'))
+  )
+
+  // append peer_id
+  const peerId = getPeerId()
+  announceUrl.searchParams.append(
+    'peer_id',
+    encodeURIComponent(peerId.toString('hex'))
+  )
+
+  // append port
+  announceUrl.searchParams.append(
+    'port',
+    encodeURIComponent(socketPort.toString())
+  )
+
+  // append uploaded
+  announceUrl.searchParams.append('uploaded', encodeURIComponent('0'))
+
+  // append downloaded
+  announceUrl.searchParams.append('downloaded', encodeURI('0'))
+
+  // append downloaded
+  const torrentSize = getTorrentSize(metaInfo)
+  announceUrl.searchParams.append(
+    'left',
+    encodeURIComponent(torrentSize.toString())
+  )
+
+  return announceUrl
+}
+
 function splitBufferToChunks(buffer: Buffer, chunkSize: number): Buffer[] {
   const chunks: Buffer[] = []
 
