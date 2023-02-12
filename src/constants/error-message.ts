@@ -44,7 +44,7 @@ export function getAnnounceRequestTimeoutErrorMsg(timeoutMs: number): string {
 }
 
 export function getAnnounceResponseParseErrorMsg(error: string): string {
-  return `invalid connection response: ${error}`
+  return `invalid announce response: ${error}`
 }
 
 export function getConnectionIDFetchErrorMsg(error: string): string {

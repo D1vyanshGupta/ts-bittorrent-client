@@ -8,7 +8,7 @@ import { logger, logMetaInfo } from './logging'
 import { UDPTrackerClient } from './tracker-client'
 import { parseMetaInfoToReadable } from './meta-info'
 
-const FILE_NAME = 'phonnyo.torrent'
+const FILE_NAME = 'XigmaNAS.torrent'
 
 function parseMetaInfoFromFile(): DecodedMetaInfo {
   const filePath = join(process.cwd(), FILE_NAME)
