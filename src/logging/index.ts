@@ -27,8 +27,8 @@ export function logMetaInfo(
     }
 
     if (Array.isArray(value)) {
-      logger.info(`${indentedKey} =>`)
-      logArrayItems(value, indent + '\t')
+      // logger.info(`${indentedKey} =>`)
+      // logArrayItems(value, indent + '\t')
       continue
     }
 

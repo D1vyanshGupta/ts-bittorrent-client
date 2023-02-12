@@ -5,7 +5,7 @@ import { decode } from 'bencode'
 
 import { DecodedMetaInfo } from './types'
 import { logger, logMetaInfo } from './logging'
-import { UDPTrackerClient } from './tracker-client'
+import { TrackerClient } from './tracker-client'
 import { parseMetaInfoToReadable } from './meta-info'
 
 const FILE_NAME = 'XigmaNAS.torrent'
@@ -20,7 +20,7 @@ function parseMetaInfoFromFile(): DecodedMetaInfo {
   return decodedMetaInfo
 }
 
-const trackerClient = new UDPTrackerClient()
+const trackerClient = new TrackerClient()
 const metaInfo = parseMetaInfoFromFile()
 trackerClient
   .getPeersForTorrent(metaInfo)

@@ -42,17 +42,17 @@ import {
   ConnectionResponse
 } from '../../src/types'
 
-import { UDPTrackerClient } from '../../src/tracker-client'
+import { TrackerClient } from '../../src/tracker-client'
 import { getRequestTimeoutMs } from '../../src/tracker-client/utils'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const utils = require('../../src/tracker-client/utils')
 
-describe('UDPTrackerClient', () => {
-  let trackerClient: UDPTrackerClient
+describe('TrackerClient', () => {
+  let trackerClient: TrackerClient
 
   beforeAll(() => {
-    trackerClient = new UDPTrackerClient()
+    trackerClient = new TrackerClient()
 
     // override default implementation for tests to run faster
     jest

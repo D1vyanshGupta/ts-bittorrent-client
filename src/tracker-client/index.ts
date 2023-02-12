@@ -32,7 +32,7 @@ import {
 import { logger } from '../logging'
 import { DecodedMetaInfo, ConnectionResponse, AnnounceResponse } from '../types'
 
-export class UDPTrackerClient {
+export class TrackerClient {
   private socket: Socket
   private socketPort: number
 
