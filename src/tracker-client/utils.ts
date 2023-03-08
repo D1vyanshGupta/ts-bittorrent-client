@@ -43,7 +43,6 @@ import {
   UDPConnectionResponse
 } from '../types'
 
-import { logger } from '../logging'
 import { decodeBencodedData } from '../helpers'
 import { getInfoHash, getTorrentSize } from '../meta-info'
 
