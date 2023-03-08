@@ -1,38 +1,128 @@
 import { randomBytes } from 'crypto'
 
 import getPeerId from './peer-id'
-import { getInfoHash, getTorrentSize } from '../meta-info'
 
 import {
+  getInvalidBufferLengthErrorMsg,
+  getAnnounceResponseParseErrorMsg,
+  getUnableToParsePeerInfoErrorMsg,
+  emptyAnnounceResponseErrorMessage,
   getResponseLengthLessThanErrorMsg,
   getResponseNotCorrespondEventErrorMsg,
   responseNotCorrespondTransactionErrorMsg
 } from '../constants/error-message'
 
 import {
+  PROTOCOL,
+  LEFT_KEY,
+  PORT_KEY,
+  COMPACT_KEY,
+  PEER_ID_KEY,
   PEER_LENGTH,
+  NUM_WANT_KEY,
+  UPLOADED_KEY,
   CONNECT_EVENT,
+  INFO_HASH_KEY,
   ANNOUNCE_EVENT,
+  DOWNLOADED_KEY,
+  RESPONSE_STATUS,
   CONN_REQ_MIN_LENGTH,
+  DEFAULT_CLIENT_PORT,
+  MAX_ASCII_CHAR_CODE,
   CONN_RESP_MIN_LENGTH,
+  ANNOUNCE_REQ_MIN_LENGTH,
   ANNOUNCE_RESP_MIN_LENGTH,
-  BUILD_CONN_REQ_PROTOCOL_ID,
-  ANNOUNCE_REQ_MIN_LENGTH
+  BUILD_CONN_REQ_PROTOCOL_ID
 } from '../constants/protocol'
 
 import {
   Peer,
   DecodedMetaInfo,
-  AnnounceResponse,
-  ConnectionResponse
+  UDPAnnounceResponse,
+  HTTPAnnounceResponse,
+  UDPConnectionResponse
 } from '../types'
 
+import { logger } from '../logging'
+import { decodeBencodedData } from '../helpers'
+import { getInfoHash, getTorrentSize } from '../meta-info'
+
+function escapeByteHexString(byteHexString: string): string {
+  let escapedString: string
+
+  const base10Value = parseInt(byteHexString, 16)
+
+  if (base10Value < MAX_ASCII_CHAR_CODE) {
+    const asciiChar = String.fromCharCode(base10Value)
+    escapedString = encodeURIComponent(asciiChar)
+  } else {
+    escapedString = `%${byteHexString.toUpperCase()}`
+  }
+
+  return escapedString
+}
+
+export function urlEncodeBuffer(buffer: Buffer): string {
+  const hexStrings = buffer.toString('hex').match(/.{1,2}/g)
+  const escapedStrings = hexStrings.map(escapeByteHexString)
+  return escapedStrings.join('')
+}
+
+function getQueryStringForAnnounceRequest(
+  metaInfo: DecodedMetaInfo,
+  compact: number,
+  port: number
+): string {
+  const searchParams: string[] = []
+
+  // append info_hash
+  const infoHash = getInfoHash(metaInfo)
+  searchParams.push(`${INFO_HASH_KEY}=${urlEncodeBuffer(infoHash)}`)
+
+  // append peer_id
+  const peerId = getPeerId()
+  searchParams.push(`${PEER_ID_KEY}=${urlEncodeBuffer(peerId)}`)
+
+  // append port
+  searchParams.push(`${PORT_KEY}=${port}`)
+
+  // append uploaded
+  searchParams.push(`${UPLOADED_KEY}=0`)
+
+  // append downloaded
+  searchParams.push(`${DOWNLOADED_KEY}=0`)
+
+  // append left
+  searchParams.push(`${LEFT_KEY}=0`)
+
+  // append compact
+  searchParams.push(`${COMPACT_KEY}=${compact}`)
+
+  // append num_want
+  searchParams.push(`${NUM_WANT_KEY}=-1`)
+
+  const searchString = searchParams.join('&')
+
+  return searchString
+}
+
+export function getURLForAnnounceRequest(
+  metaInfo: DecodedMetaInfo,
+  compact = 1,
+  port: number = DEFAULT_CLIENT_PORT
+): URL {
+  const announceUrl = new URL(metaInfo.announce)
+  announceUrl.search = getQueryStringForAnnounceRequest(metaInfo, compact, port)
+
+  return announceUrl
+}
+
 // calculate timeout for exponential backoff, as per BEP: 15
-export function getRequestTimeoutMs(requestIdx: number): number {
+export function getUDPRequestTimeoutMs(requestIdx: number): number {
   return 1000 * 15 * 2 ** requestIdx
 }
 
-export function getResponseType(response: Buffer): string {
+export function getUDPResponseType(response: Buffer): string {
   const action = response.readUInt32BE(0)
   if (action === 0) return CONNECT_EVENT
   return ANNOUNCE_EVENT
@@ -46,7 +136,7 @@ export function getResponseType(response: Buffer): string {
   12      32-bit integer  transaction_id
   16
   */
-export function buildConnectionRequest(transactionID: Buffer): Buffer {
+export function getUDPConnectionRequest(transactionID: Buffer): Buffer {
   const buffer = Buffer.allocUnsafe(CONN_REQ_MIN_LENGTH)
 
   // protocol_id 0x41727101980, fixed as per BEP: 15
@@ -70,17 +160,17 @@ export function buildConnectionRequest(transactionID: Buffer): Buffer {
   8       64-bit integer  connection_id
   16
   */
-export function parseConnectionResponse(
+export function parseUDPConnectionResponse(
   transactionID: Buffer,
   response: Buffer
-): ConnectionResponse {
+): UDPConnectionResponse {
   const receiptTime = Date.now()
 
   // response buffer should be atleast 16 bytes
   if (response.length < CONN_RESP_MIN_LENGTH)
     throw Error(getResponseLengthLessThanErrorMsg(CONN_RESP_MIN_LENGTH))
 
-  const responseType = getResponseType(response)
+  const responseType = getUDPResponseType(response)
   if (responseType !== CONNECT_EVENT)
     throw Error(getResponseNotCorrespondEventErrorMsg(CONNECT_EVENT))
 
@@ -113,7 +203,7 @@ export function parseConnectionResponse(
   96      16-bit integer  port
   98
   */
-export function buildAnnounceRequest(
+export function getUDPAnnounceRequest(
   socketPort: number,
   metaInfo: DecodedMetaInfo,
   connectionID: Buffer,
@@ -168,54 +258,14 @@ export function buildAnnounceRequest(
   return buffer
 }
 
-export function buildAnnounceRequestUrl(
-  socketPort: number,
-  metaInfo: DecodedMetaInfo
-): URL {
-  const { announce } = metaInfo
-  const announceUrl = new URL(announce.toString('utf8'))
-
-  // append info_hash
-  const infoHash = getInfoHash(metaInfo)
-  announceUrl.searchParams.append(
-    'info_hash',
-    encodeURIComponent(infoHash.toString('base64'))
-  )
-
-  // append peer_id
-  const peerId = getPeerId()
-  announceUrl.searchParams.append(
-    'peer_id',
-    encodeURIComponent(peerId.toString('hex'))
-  )
-
-  // append port
-  announceUrl.searchParams.append(
-    'port',
-    encodeURIComponent(socketPort.toString())
-  )
-
-  // append uploaded
-  announceUrl.searchParams.append('uploaded', encodeURIComponent('0'))
-
-  // append downloaded
-  announceUrl.searchParams.append('downloaded', encodeURI('0'))
-
-  // append downloaded
-  const torrentSize = getTorrentSize(metaInfo)
-  announceUrl.searchParams.append(
-    'left',
-    encodeURIComponent(torrentSize.toString())
-  )
-
-  return announceUrl
-}
-
 function splitBufferToChunks(buffer: Buffer, chunkSize: number): Buffer[] {
   const chunks: Buffer[] = []
 
   let idx = 0
   const bufferLength = buffer.length
+
+  if (bufferLength % chunkSize !== 0)
+    throw Error(getInvalidBufferLengthErrorMsg(chunkSize))
 
   //eslint-disable-next-line no-loops/no-loops
   while (idx < bufferLength) {
@@ -226,6 +276,21 @@ function splitBufferToChunks(buffer: Buffer, chunkSize: number): Buffer[] {
   }
 
   return chunks
+}
+
+export function parsePeersInfoBuffer(peerInfoBuffer: Buffer): Peer[] {
+  try {
+    const peerList = splitBufferToChunks(peerInfoBuffer, PEER_LENGTH)
+
+    return peerList.map(
+      (peerInfo: Buffer): Peer => ({
+        ip: peerInfo.subarray(0, 4).join('.'),
+        port: peerInfo.readUInt16BE(4)
+      })
+    )
+  } catch (error) {
+    throw Error(getUnableToParsePeerInfoErrorMsg(error.message))
+  }
 }
 
 /*
@@ -240,14 +305,14 @@ function splitBufferToChunks(buffer: Buffer, chunkSize: number): Buffer[] {
   24 + 6 * n  16-bit integer  TCP port
   20 + 6 * N
   */
-export function parseAnnounceResponse(
+export function parseUDPAnnounceResponse(
   transactionID: Buffer,
   response: Buffer
-): AnnounceResponse {
+): UDPAnnounceResponse {
   if (response.length < ANNOUNCE_RESP_MIN_LENGTH)
     throw Error(getResponseLengthLessThanErrorMsg(ANNOUNCE_RESP_MIN_LENGTH))
 
-  const responseType = getResponseType(response)
+  const responseType = getUDPResponseType(response)
   if (responseType !== ANNOUNCE_EVENT)
     throw Error(getResponseNotCorrespondEventErrorMsg(ANNOUNCE_EVENT))
 
@@ -255,18 +320,47 @@ export function parseAnnounceResponse(
   const isSame = Buffer.compare(transactionID, responseTransactionID) === 0
   if (!isSame) throw Error(responseNotCorrespondTransactionErrorMsg)
 
-  const peerList = splitBufferToChunks(response.subarray(20), PEER_LENGTH)
-
-  const peers = peerList.map(
-    (peer: Buffer): Peer => ({
-      ip: peer.subarray(0, 4),
-      port: peer.readInt16BE(4)
-    })
-  )
+  const peers = parsePeersInfoBuffer(response.subarray(20))
 
   return {
+    type: PROTOCOL.UDP,
+    status: RESPONSE_STATUS.SUCCESS,
     peers,
     seeders: response.readUInt32BE(16),
     leechers: response.readUInt32BE(12)
+  }
+}
+
+export function parseHTTPAnnounceResponse(
+  dataBuffer: Buffer
+): HTTPAnnounceResponse {
+  try {
+    if (!dataBuffer.length) throw Error(emptyAnnounceResponseErrorMessage)
+
+    const decodedResponse = decodeBencodedData(dataBuffer)
+
+    const { peers } = decodedResponse
+    if (peers) {
+      if (Buffer.isBuffer(peers))
+        decodedResponse['peers'] = parsePeersInfoBuffer(peers)
+      else
+        decodedResponse['peers'] = peers.map((peer) => {
+          peer['ip'] = peer['ip'].toString('utf8')
+          return peer
+        })
+    }
+
+    if ('failure reason' in decodedResponse) {
+      decodedResponse['failure reason'] =
+        decodedResponse['failure reason'].toString('utf8')
+
+      decodedResponse['status'] = RESPONSE_STATUS.FAILURE
+    } else decodedResponse['status'] = RESPONSE_STATUS.SUCCESS
+
+    decodedResponse['type'] = PROTOCOL.HTTP
+
+    return decodedResponse
+  } catch (error) {
+    throw Error(getAnnounceResponseParseErrorMsg(error.message))
   }
 }

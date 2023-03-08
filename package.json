@@ -1,5 +1,5 @@
 {
-  "name": "ts-bit-torrent-client",
+  "name": "ts-bittorrent-client",
   "version": "1.0.0",
   "description": "A BitTorrent client written in TypeScript",
   "scripts": {
@@ -44,6 +44,7 @@
     "typescript": "^4.8.4"
   },
   "dependencies": {
+    "axios": "^1.3.3",
     "bencode": "^2.0.3",
     "npm-run-all": "^4.1.5",
     "pino": "^8.7.0",

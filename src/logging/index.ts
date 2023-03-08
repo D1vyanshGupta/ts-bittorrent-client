@@ -2,7 +2,7 @@ import pino from 'pino'
 import pretty from 'pino-pretty'
 
 import { isObject } from '../helpers'
-import { ReadableMetaInfo } from '../types'
+import { DecodedMetaInfo } from '../types'
 
 export const logger = pino(pretty())
 
@@ -13,12 +13,19 @@ function logArrayItems(array: string[], indent: string): void {
 }
 
 export function logMetaInfo(
-  metaInfo: ReadableMetaInfo | object,
+  metaInfo: DecodedMetaInfo | object,
   indent = ''
 ): void {
   //eslint-disable-next-line no-loops/no-loops
   for (const [key, value] of Object.entries(metaInfo)) {
     const indentedKey = indent + key
+
+    if (key === 'pieces') {
+      logger.info(
+        `${indentedKey} => ${value.toString('hex').substring(0, 10)}...`
+      )
+      continue
+    }
 
     if (isObject(value)) {
       logger.info(`${indentedKey} =>`)
@@ -27,8 +34,12 @@ export function logMetaInfo(
     }
 
     if (Array.isArray(value)) {
-      // logger.info(`${indentedKey} =>`)
-      // logArrayItems(value, indent + '\t')
+      logger.info(`${indentedKey} =>`)
+      logArrayItems(value, indent + '\t')
+      continue
+    }
+
+    if (Buffer.isBuffer(value)) {
       continue
     }
 

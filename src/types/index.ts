@@ -1,55 +1,60 @@
+import { PROTOCOL, RESPONSE_STATUS } from '../constants/protocol'
+
 type FileInfo = {
   length: number
-  path: Buffer
+  path: string
 }
 
 export type DecodedMetaInfo = {
-  announce: Buffer
-  'announce-list'?: Buffer
-  'created by'?: Buffer
+  announce: string
+  'announce-list'?: string[]
+  'created by'?: string
   'creation date'?: number
   encoding?: Buffer
   info: {
     files?: FileInfo[]
     length?: number
-    name: Buffer
+    name: string
     'piece length': number
     pieces: Buffer
   }
 }
 
-type ReadableFileInfo = {
-  length: number
-  path: string[]
-}
-
-export type ReadableMetaInfo = {
-  announce: string
-  'announce-list'?: string[]
-  'created by'?: string
-  'creation date'?: number
-  encoding?: string
-  info: {
-    files?: ReadableFileInfo[]
-    length?: number
-    name: string
-    'piece length': number
-    pieces: string[]
-  }
-}
-
-export type ConnectionResponse = {
+export type UDPConnectionResponse = {
   receiptTime: number
   connectionID: Buffer
 }
 
 export type Peer = {
-  ip: Buffer
+  ip: string
   port: number
 }
 
-export type AnnounceResponse = {
+export type UDPAnnounceResponse = {
+  type: PROTOCOL.UDP
+  status: RESPONSE_STATUS.SUCCESS
   peers: Peer[]
   seeders: number
   leechers: number
 }
+
+type HTTPSuccessAnnounceResponse = {
+  type: PROTOCOL.HTTP
+  status: RESPONSE_STATUS.SUCCESS
+  complete: number
+  incomplete: number
+  interval: number
+  'min interval': number
+  peers: Peer[]
+}
+
+type HTTPFailureAnnounceResponse = {
+  type: PROTOCOL.HTTP
+  status: RESPONSE_STATUS.FAILURE
+  'failure reason': string
+  'warning message'?: string
+}
+
+export type HTTPAnnounceResponse =
+  | HTTPSuccessAnnounceResponse
+  | HTTPFailureAnnounceResponse

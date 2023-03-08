@@ -1,56 +1,50 @@
-import { encode } from 'bencode'
 import { createHash } from 'crypto'
+import { encode } from 'bencode'
 
-import { isObject } from '../helpers'
-import { DecodedMetaInfo, ReadableMetaInfo } from '../types'
+import { isObject, decodeBencodedData } from '../helpers'
+import { DecodedMetaInfo } from '../types'
+import { getUnableDecodeTorrentFileErrorMsg } from '../constants/error-message'
 
-function getHashListFromBuffer(buffer: Buffer): string[] {
-  const hashString = buffer.toString('hex')
-
-  // SHA1 hash is 160 bits long == 40 hex chars
-  const hashList: string[] = []
-
-  let startIndex = 0
-  const hashLength = hashString.length
-
-  //eslint-disable-next-line no-loops/no-loops
-  while (startIndex < hashLength) {
-    const pieceHash = hashString.slice(startIndex, startIndex + 40)
-    hashList.push(pieceHash)
-
-    startIndex += 40
-  }
-
-  return hashList
-}
-
-export function parseMetaInfoToReadable(input: object): ReadableMetaInfo {
+function parseDecodedMetaInfo(input: object): DecodedMetaInfo {
   const metaInfo = {}
 
   //eslint-disable-next-line no-loops/no-loops
   for (const [key, value] of Object.entries(input)) {
+    if (key === 'pieces') {
+      metaInfo[key] = value
+      continue
+    }
+
     if (Buffer.isBuffer(value)) {
-      if (key !== 'pieces') metaInfo[key] = value.toString('utf8')
-      else metaInfo[key] = getHashListFromBuffer(value)
+      metaInfo[key] = value.toString('utf8')
       continue
     }
 
     if (isObject(value)) {
-      metaInfo[key] = parseMetaInfoToReadable(value)
+      metaInfo[key] = parseDecodedMetaInfo(value)
       continue
     }
 
-    if (key === 'creation date') metaInfo[key] = new Date(value).toISOString()
-    else metaInfo[key] = value
+    metaInfo[key] = value
   }
 
-  return metaInfo as ReadableMetaInfo
+  return metaInfo as DecodedMetaInfo
+}
+
+export function decodeMetaInfo(dataBuffer: Buffer): DecodedMetaInfo {
+  try {
+    const decodedData = decodeBencodedData(dataBuffer)
+    const decodedMetaInfo = parseDecodedMetaInfo(decodedData)
+
+    return decodedMetaInfo
+  } catch (error) {
+    throw Error(getUnableDecodeTorrentFileErrorMsg(error.message))
+  }
 }
 
 export function getInfoHash(metaInfo: DecodedMetaInfo): Buffer {
   const bencodedInfo = encode(metaInfo.info)
   const infoHash = createHash('sha1').update(bencodedInfo).digest()
-
   return infoHash
 }
 

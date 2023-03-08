@@ -1,5 +1,7 @@
 import { randomBytes } from 'crypto'
 
+import { metaInfoNameFixture, udpAnnouceUrlFixture } from '../fixtures'
+
 import { DecodedMetaInfo } from '../../src/types'
 import { getTorrentSize } from '../../src/meta-info'
 
@@ -13,9 +15,9 @@ describe('meta-info', () => {
         if (typeof length === 'string') length = Math.ceil(Math.random() + 1)
 
         metaInfo = {
-          announce: randomBytes(Math.ceil((Math.random() + 1) * 10)),
+          announce: udpAnnouceUrlFixture.toString(),
           info: {
-            name: randomBytes(Math.ceil((Math.random() + 1) * 10)),
+            name: metaInfoNameFixture,
             pieces: randomBytes(Math.ceil((Math.random() + 1) * 10)),
             'piece length': Math.ceil((Math.random() + 1) * 10),
             length: length
@@ -35,14 +37,14 @@ describe('meta-info', () => {
       )
 
       metaInfo = {
-        announce: randomBytes(Math.ceil((Math.random() + 1) * 10)),
+        announce: udpAnnouceUrlFixture.toString(),
         info: {
-          name: randomBytes(Math.ceil((Math.random() + 1) * 10)),
+          name: metaInfoNameFixture,
           pieces: randomBytes(Math.ceil((Math.random() + 1) * 10)),
           'piece length': Math.ceil((Math.random() + 1) * 10),
           files: fileLengths.map((length) => ({
             length,
-            path: randomBytes(Math.ceil((Math.random() + 1) * 10))
+            path: randomBytes(Math.ceil((Math.random() + 1) * 10)).toString()
           }))
         }
       }

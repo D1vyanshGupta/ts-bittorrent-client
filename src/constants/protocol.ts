@@ -1,5 +1,30 @@
-export const DEFAULT_SOCKET_PORT = 6881
-export const MAX_NUM_CLIENT_REQUESTS = 9
+export enum PROTOCOL {
+  UDP = 'udp',
+  HTTP = 'http'
+}
+
+export const MAX_ASCII_CHAR_CODE = 127
+
+export const DEFAULT_CLIENT_PORT = 6881
+
+// query params for `http` announce request
+export const LEFT_KEY = 'left'
+export const PORT_KEY = 'port'
+export const COMPACT_KEY = 'compact'
+export const PEER_ID_KEY = 'peer_id'
+export const NUM_WANT_KEY = 'num_want'
+export const UPLOADED_KEY = 'uploaded'
+export const INFO_HASH_KEY = 'info_hash'
+export const DOWNLOADED_KEY = 'downloaded'
+
+// announce response status enum
+export enum RESPONSE_STATUS {
+  SUCCESS = 'success',
+  FAILURE = 'failure'
+}
+
+// params related to `udp` (connection) request, (announce) response
+export const MAX_NUM_UDP_CLIENT_REQUESTS = 9
 
 // connection ID is valid for 1 min, as per BEP: 15
 export const CONNECTION_ID_VALIDITY_MS = 60 * 1000

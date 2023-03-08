@@ -1,20 +1,25 @@
 import { randomBytes } from 'crypto'
 import { Socket, createSocket } from 'dgram'
 
+import { HTTPClient } from './http-client'
+
 import {
-  getRequestTimeoutMs,
-  buildAnnounceRequest,
-  parseAnnounceResponse,
-  buildConnectionRequest,
-  buildAnnounceRequestUrl,
-  parseConnectionResponse
+  getUDPAnnounceRequest,
+  getUDPRequestTimeoutMs,
+  getUDPConnectionRequest,
+  getURLForAnnounceRequest,
+  parseUDPAnnounceResponse,
+  parseHTTPAnnounceResponse,
+  parseUDPConnectionResponse
 } from './utils'
 
 import {
-  DEFAULT_SOCKET_PORT,
+  PROTOCOL,
+  RESPONSE_STATUS,
+  DEFAULT_CLIENT_PORT,
   TRANSACTION_ID_LENGTH,
-  MAX_NUM_CLIENT_REQUESTS,
-  CONNECTION_ID_VALIDITY_MS
+  CONNECTION_ID_VALIDITY_MS,
+  MAX_NUM_UDP_CLIENT_REQUESTS
 } from '../constants/protocol'
 
 import {
@@ -24,41 +29,49 @@ import {
   getAnnounceResponseParseErrorMsg,
   getConnectionRequestSendErrorMsg,
   getAnnounceRequestTimeoutErrorMsg,
+  getAnnounceResponseReceiveErrorMsg,
   getConnectionResponseParseErrorMsg,
+  invalidAnnounceUrlProtocolErrorMsg,
   getConnectionRequestTimeoutErrorMsg,
   getUnableObtainConnectionIDErrorMsg,
   getUnableReceiveAnnounceResponseErrorMsg
 } from '../constants/error-message'
 
+import {
+  DecodedMetaInfo,
+  UDPAnnounceResponse,
+  HTTPAnnounceResponse,
+  UDPConnectionResponse
+} from '../types'
+
 import { logger } from '../logging'
-import { DecodedMetaInfo, ConnectionResponse, AnnounceResponse } from '../types'
 
 export class TrackerClient {
-  private socket: Socket
-  private socketPort: number
+  private readonly socketPort: number
+  private readonly httpClient: HTTPClient = new HTTPClient()
+  private readonly udpSocket: Socket = createSocket('udp4')
 
-  private connectionID: Buffer
-  private connectionReceiptTime: number
+  private udpConnectionID: Buffer
+  private udpConnectionReceiptTime: number
 
-  constructor(socketPort = DEFAULT_SOCKET_PORT) {
-    this.socket = createSocket('udp4')
+  constructor(socketPort = DEFAULT_CLIENT_PORT) {
     this.socketPort = socketPort
 
-    this.socket.bind(this.socketPort)
+    this.udpSocket.bind(this.socketPort)
   }
 
-  setConnection(connectionID: Buffer, connectionReceiptTime: number) {
-    this.connectionID = connectionID
-    this.connectionReceiptTime = connectionReceiptTime
+  setUDPConnection(connectionID: Buffer, connectionReceiptTime: number) {
+    this.udpConnectionID = connectionID
+    this.udpConnectionReceiptTime = connectionReceiptTime
   }
 
-  resetConnection(): void {
-    this.connectionID = undefined
-    this.connectionReceiptTime = undefined
+  resetUDPConnection(): void {
+    this.udpConnectionID = undefined
+    this.udpConnectionReceiptTime = undefined
   }
 
   close(): void {
-    this.socket.close()
+    this.udpSocket.close()
   }
 
   private sendUDPDatagram(
@@ -67,11 +80,11 @@ export class TrackerClient {
     callBack: (any) => void
   ): void {
     try {
-      this.socket.send(
+      this.udpSocket.send(
         msgBuffer,
         0,
         msgBuffer.length,
-        +announceUrl.port || DEFAULT_SOCKET_PORT,
+        +announceUrl.port || DEFAULT_CLIENT_PORT,
         announceUrl.hostname,
         callBack
       )
@@ -80,13 +93,13 @@ export class TrackerClient {
     }
   }
 
-  private sendConnectionRequest(
+  private sendUDPConnectionRequest(
     announceUrl: URL,
     timeoutMs: number
-  ): Promise<ConnectionResponse> {
+  ): Promise<UDPConnectionResponse> {
     return new Promise((resolve, reject) => {
       const transactionID = randomBytes(TRANSACTION_ID_LENGTH)
-      const connectionRequest = buildConnectionRequest(transactionID)
+      const connectionRequest = getUDPConnectionRequest(transactionID)
 
       try {
         this.sendUDPDatagram(announceUrl, connectionRequest, (): void => {
@@ -97,7 +110,7 @@ export class TrackerClient {
           const callback = (response: Buffer): void => {
             try {
               clearTimeout(timer)
-              const connectionResponse = parseConnectionResponse(
+              const connectionResponse = parseUDPConnectionResponse(
                 transactionID,
                 response
               )
@@ -112,11 +125,11 @@ export class TrackerClient {
 
           const timer = setTimeout(async (): Promise<void> => {
             const error = Error(getConnectionRequestTimeoutErrorMsg(timeoutMs))
-            this.socket.removeListener('message', callback)
+            this.udpSocket.removeListener('message', callback)
             reject(error)
           }, timeoutMs)
 
-          this.socket.once('message', callback)
+          this.udpSocket.once('message', callback)
         })
       } catch (error) {
         const requestError = Error(
@@ -127,20 +140,18 @@ export class TrackerClient {
     })
   }
 
-  private async getConnectionID(announceUrl: URL): Promise<void> {
+  private async getConnectionIDFromUDPTracker(announceUrl: URL): Promise<void> {
     let requestIdx = 0
 
     // exponential backoff for fetching connection ID, as per BEP: 15
     // eslint-disable-next-line no-loops/no-loops
-    while (requestIdx < MAX_NUM_CLIENT_REQUESTS) {
-      const timeoutMs = getRequestTimeoutMs(requestIdx)
+    while (requestIdx < MAX_NUM_UDP_CLIENT_REQUESTS) {
+      const timeoutMs = getUDPRequestTimeoutMs(requestIdx)
       try {
-        const { connectionID, receiptTime } = await this.sendConnectionRequest(
-          announceUrl,
-          timeoutMs
-        )
+        const { connectionID, receiptTime } =
+          await this.sendUDPConnectionRequest(announceUrl, timeoutMs)
 
-        this.setConnection(connectionID, receiptTime)
+        this.setUDPConnection(connectionID, receiptTime)
 
         logger.info(
           `received connection response at ${new Date(
@@ -155,32 +166,32 @@ export class TrackerClient {
       requestIdx++
     }
 
-    if (requestIdx === MAX_NUM_CLIENT_REQUESTS)
+    if (requestIdx === MAX_NUM_UDP_CLIENT_REQUESTS)
       throw Error(getUnableObtainConnectionIDErrorMsg(announceUrl))
   }
 
-  private isConnectionIDValid(): boolean {
-    if (!this.connectionID) return false
+  private isUDPConnectionValid(): boolean {
+    if (!this.udpConnectionID) return false
 
-    const diffMs = Date.now() - this.connectionReceiptTime
+    const diffMs = Date.now() - this.udpConnectionReceiptTime
     return diffMs < CONNECTION_ID_VALIDITY_MS
   }
 
-  private sendAnnounceRequest(
+  private sendUDPAnnounceRequest(
     metaInfo: DecodedMetaInfo,
     timeoutMs: number
-  ): Promise<AnnounceResponse> {
+  ): Promise<UDPAnnounceResponse> {
     return new Promise((resolve, reject) => {
       const transactionID = randomBytes(TRANSACTION_ID_LENGTH)
-      const announceRequest = buildAnnounceRequest(
+      const announceRequest = getUDPAnnounceRequest(
         this.socketPort,
         metaInfo,
-        this.connectionID,
+        this.udpConnectionID,
         transactionID
       )
 
       try {
-        const announceUrl = new URL(metaInfo.announce.toString('utf8'))
+        const announceUrl = new URL(metaInfo.announce)
 
         this.sendUDPDatagram(announceUrl, announceRequest, (): void => {
           logger.info(
@@ -190,7 +201,7 @@ export class TrackerClient {
           const callback = (response: Buffer): void => {
             try {
               clearTimeout(timer)
-              const announceResponse = parseAnnounceResponse(
+              const announceResponse = parseUDPAnnounceResponse(
                 transactionID,
                 response
               )
@@ -208,11 +219,11 @@ export class TrackerClient {
               getAnnounceRequestTimeoutErrorMsg(timeoutMs)
             )
 
-            this.socket.removeListener('message', callback)
+            this.udpSocket.removeListener('message', callback)
             reject(timeoutError)
           }, timeoutMs)
 
-          this.socket.once('message', callback)
+          this.udpSocket.once('message', callback)
         })
       } catch (error) {
         const requestError = Error(
@@ -223,24 +234,19 @@ export class TrackerClient {
     })
   }
 
-  async getPeersForTorrent(
+  private async getPeersFromUDPTracker(
     metaInfo: DecodedMetaInfo
-  ): Promise<AnnounceResponse> {
+  ): Promise<UDPAnnounceResponse> {
     let requestIdx = 0
     let numRequests = 0
 
-    const url = buildAnnounceRequestUrl(this.socketPort, metaInfo)
-    logger.info('----------------')
-    logger.info(url.toString())
-    logger.info('----------------')
-
-    const announceUrl = new URL(metaInfo.announce.toString('utf8'))
+    const announceUrl = new URL(metaInfo.announce)
 
     // exponential backoff, as per BEP: 15
     // eslint-disable-next-line no-loops/no-loops
-    while (numRequests < MAX_NUM_CLIENT_REQUESTS) {
-      if (!this.isConnectionIDValid()) {
-        await this.getConnectionID(announceUrl).catch((error) => {
+    while (numRequests < MAX_NUM_UDP_CLIENT_REQUESTS) {
+      if (!this.isUDPConnectionValid()) {
+        await this.getConnectionIDFromUDPTracker(announceUrl).catch((error) => {
           throw Error(getConnectionIDFetchErrorMsg(error.message))
         })
 
@@ -248,10 +254,10 @@ export class TrackerClient {
         requestIdx = 0
       }
 
-      const requestTimeout = getRequestTimeoutMs(requestIdx)
+      const requestTimeout = getUDPRequestTimeoutMs(requestIdx)
 
       try {
-        const announceResponse = await this.sendAnnounceRequest(
+        const announceResponse = await this.sendUDPAnnounceRequest(
           metaInfo,
           requestTimeout
         )
@@ -268,5 +274,45 @@ export class TrackerClient {
     }
 
     throw Error(getUnableReceiveAnnounceResponseErrorMsg(announceUrl))
+  }
+
+  private async getPeersFromHTTPTracker(
+    metaInfo: DecodedMetaInfo
+  ): Promise<HTTPAnnounceResponse> {
+    const announceUrl = getURLForAnnounceRequest(metaInfo)
+
+    try {
+      const responseBuffer = await this.httpClient.get<Buffer>(
+        announceUrl.toString()
+      )
+      const announceResponse = parseHTTPAnnounceResponse(responseBuffer)
+      return announceResponse
+    } catch (error) {
+      throw Error(getAnnounceResponseReceiveErrorMsg(error.message))
+    }
+  }
+
+  async getPeersForTorrent(
+    metaInfo: DecodedMetaInfo
+  ): Promise<UDPAnnounceResponse | HTTPAnnounceResponse> {
+    const announceUrl = new URL(metaInfo.announce)
+    let { protocol } = announceUrl
+    protocol = protocol.slice(0, protocol.length - 1)
+
+    if (protocol.includes(PROTOCOL.HTTP)) protocol = PROTOCOL.HTTP
+
+    switch (protocol) {
+      case PROTOCOL.UDP: {
+        return this.getPeersFromUDPTracker(metaInfo)
+      }
+
+      case PROTOCOL.HTTP: {
+        return this.getPeersFromHTTPTracker(metaInfo)
+      }
+
+      default: {
+        throw Error(invalidAnnounceUrlProtocolErrorMsg)
+      }
+    }
   }
 }
